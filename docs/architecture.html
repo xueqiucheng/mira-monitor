@@ -1,0 +1,1243 @@
+<!doctype html>
+<html lang="zh" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mira Monitor 架构</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #09090b;
+  --bg-2: #0f0f12;
+  --bg-3: #18181b;
+  --border: #27272a;
+  --text: #e4e4e7;
+  --text-muted: #a1a1aa;
+  --text-dim: #71717a;
+  --heading: #fafafa;
+  --link: #06b6d4;
+  --code-bg: #0e0e12;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 6rem;
+}
+
+h1, h2, h3, h4, h5 {
+  color: var(--heading);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 1.5rem;
+}
+
+h1 {
+  font-size: 1.95rem;
+  margin: 0 0 1.5rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+h2 {
+  font-size: 1.45rem;
+  margin: 3rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+h3 {
+  font-size: 1.18rem;
+  margin: 2.2rem 0 0.75rem;
+}
+
+h4 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+  color: var(--text);
+}
+
+p { margin: 0.75rem 0; }
+li { margin: 0.25rem 0; }
+ul, ol { padding-left: 1.5rem; }
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+strong { color: var(--heading); font-weight: 600; }
+
+code {
+  font-family: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  color: #f4f4f5;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  font-size: 0.825rem;
+  line-height: 1.55;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: #e4e4e7;
+  white-space: pre;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  background: var(--bg-2);
+  color: var(--heading);
+  font-weight: 600;
+  border-bottom: 1.5px solid var(--border);
+  font-size: 0.825rem;
+}
+
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--bg-3); }
+
+td code { white-space: nowrap; }
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2.5rem 0;
+}
+
+blockquote {
+  border-left: 3px solid var(--link);
+  margin: 1rem 0;
+  padding: 0.25rem 0 0.25rem 1rem;
+  color: var(--text-muted);
+  background: rgba(6, 182, 212, 0.05);
+}
+
+.doc-meta {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  font-family: "Geist Mono", monospace;
+  margin-bottom: 2rem;
+  padding: 0.5rem 0;
+}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="doc-meta">source: docs/architecture.md · 生成时间: 2026-05-15T03:19:18.686Z</div>
+<h1>Mira Monitor 架构</h1>
+<p>Mira 海外版的全局监控大屏。</p>
+<p><strong>v1 当前状态(本文 1-10 节)</strong>:2 tab(基础服务健康度 / 业务看板)、17 卡片,统一在 <code>/api/metrics</code> 一个端点聚合 6 个数据源 → 前端 10s 轮询渲染。<strong>无状态、不落地。</strong></p>
+<p><strong>v2 规划中(本文第 11 节)</strong>:加 SQLite 持久化 + 接收外部推送的成本数据(<code>POST /api/ingest/cost</code>)+ 加 Cost Tab(费用趋势)+ 加告警引擎(规则评估 + 推 webhook 给现有飞书/告警系统)。</p>
+<h2>1. 技术栈</h2>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>选型</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Framework</td>
+<td>Next.js 16 (App Router, Turbopack)</td>
+<td>server route 用来代理含 secret 的 API 调用</td>
+</tr>
+<tr>
+<td>Runtime</td>
+<td>Bun (Next.js 跑在 Node.js 兼容模式)</td>
+<td>包管理用 npm + npmmirror(bun resolver 在该用户网络下不稳)</td>
+</tr>
+<tr>
+<td>样式</td>
+<td>Tailwind v4(OKLCH 色域)+ shadcn/ui(base-nova / neutral)</td>
+<td>组件用 shadcn 原语 + Recharts</td>
+</tr>
+<tr>
+<td>图表</td>
+<td>Recharts(via shadcn/ui chart)</td>
+<td>sparkline 用 <code>&lt;AreaChart&gt;</code></td>
+</tr>
+<tr>
+<td>客户端数据</td>
+<td>TanStack Query v5 + <code>refetchInterval: 10s</code></td>
+<td>全局 QueryClient,持久化关闭</td>
+</tr>
+<tr>
+<td>类型</td>
+<td>TypeScript strict</td>
+<td>全部类型签名,零 <code>any</code></td>
+</tr>
+</tbody></table>
+<h2>2. 目录结构</h2>
+<pre><code>mira-monitor/
+├── app/
+│   ├── api/
+│   │   ├── metrics/route.ts         聚合 endpoint(无 auth)
+│   │   └── health/route.ts          dashboard 自身健康检查
+│   ├── layout.tsx                   QueryProvider + 暗色 + Geist 字体
+│   └── page.tsx                     Tabs 容器 + useMetrics + 顶部 lastUpdate
+│
+├── lib/
+│   ├── env.ts                       env 读取 + isConfigured(source) 判断
+│   ├── types.ts                     全部 metrics 数据结构(MetricsResponse 等)
+│   ├── format.ts                    数字/百分比/毫秒/相对时间格式化
+│   ├── fetch.ts                     通用 fetchJson(带超时,目前未广泛使用)
+│   ├── utils.ts                     shadcn cn() helper
+│   └── sources/
+│       ├── index.ts                 聚合器:并行调 6 个 source,合并入 baseline
+│       ├── mock.ts                  全量 mock data(baseline + 各 source 失败 fallback)
+│       ├── ping.ts                  /api/health 心跳(无认证)
+│       ├── statuspage.ts            6 家 SaaS 状态(无认证,RSS-style JSON)
+│       ├── railway.ts               GraphQL deployments(Project-Access-Token header)
+│       ├── posthog.ts               HogQL 自定义 SQL(Bearer phx_ key)
+│       ├── langfuse.ts              metrics/daily + observations(Basic auth)
+│       └── sentry.ts                events-stats + events + sessions(Bearer sntryu_)
+│
+├── components/
+│   ├── providers/query-provider.tsx QueryClient 单例
+│   ├── tabs/
+│   │   ├── health-tab.tsx           8 卡片 grid
+│   │   └── business-tab.tsx         9 卡片 grid
+│   ├── cards/                       17 卡片组件 + card-shell + spark
+│   └── ui/                          shadcn 原语(card / tabs / badge / chart / ...)
+│
+├── hooks/
+│   └── use-metrics.ts               useQuery({ queryKey: [&quot;metrics&quot;] })
+│
+├── docs/
+│   ├── architecture.md              本文件
+│   └── dashboard-data-spec.md       每卡片对应 query 的 spec(实施前 spec)
+│
+├── .env.local                       实际 secret 值(不入仓)
+├── .env.example                     env 字段说明
+├── bunfig.toml                      npmmirror registry
+├── next.config.ts                   Next 16 默认
+└── package.json
+</code></pre>
+<h2>3. 数据流总览</h2>
+<pre><code>                            ┌──────────────────────────────────────────┐
+                            │  外部数据源(都是云服务,需 secret 才能读) │
+                            ├──────────────────────────────────────────┤
+   ┌─ Sentry SaaS ──────────┤  events-stats / events / sessions API    │
+   │  (sntryu_ token)        │                                          │
+   │                         │                                          │
+   ├─ Langfuse Cloud ────────┤  /api/public/metrics/daily               │
+   │  (Basic pub:sec)        │  /api/public/observations?type=SPAN      │
+   │                         │                                          │
+   ├─ PostHog Cloud ─────────┤  /api/projects/@current/query/ (HogQL)   │
+   │  (Bearer phx_)          │                                          │
+   │                         │                                          │
+   ├─ Railway GraphQL ───────┤  deployments(input: {project, env})      │
+   │  (Project-Access-Token) │                                          │
+   │                         │                                          │
+   ├─ Statuspage.io × 6 ─────┤  Sentry/Vercel/CF/Anthropic/OpenAI/Railway
+   │  (无 auth)               │   /api/v2/status.json                   │
+   │                         │                                          │
+   └─ Mira /api/health ──────┤  自建 HTTP ping(无 auth)                │
+                            └──────────────────────────────────────────┘
+                                          │
+                                          │  HTTPS, 10s 超时, 1 次重试
+                                          ▼
+                            ┌──────────────────────────────────────────┐
+                            │   lib/sources/&lt;name&gt;.ts(每源一个文件)   │
+                            │                                          │
+                            │   职责:                                  │
+                            │   1) 读 env 拼 Auth header               │
+                            │   2) 构 query/URL                        │
+                            │   3) fetch(timeout, no-store)            │
+                            │   4) 把 raw response → 标准 types        │
+                            │   5) 失败 throw,让 aggregator 处理     │
+                            └──────────────────────────────────────────┘
+                                          │
+                                          │  返回 typed metric 片段
+                                          ▼
+                            ┌──────────────────────────────────────────┐
+                            │   lib/sources/index.ts(aggregator)      │
+                            │                                          │
+                            │   1) baseline = mockResponse()           │
+                            │   2) Promise.all([settled(...) × 9])    │
+                            │   3) 每源:configured? → 真调:返 null │
+                            │   4) 成功 → 覆盖 baseline 对应字段      │
+                            │   5) 失败 → 保留 mock + 写 sources.X.err │
+                            │   6) 返回完整 MetricsResponse            │
+                            └──────────────────────────────────────────┘
+                                          │
+                                          │  JSON
+                                          ▼
+                            ┌──────────────────────────────────────────┐
+                            │   app/api/metrics/route.ts               │
+                            │   GET handler · dynamic=&quot;force-dynamic&quot;  │
+                            │   Cache-Control: no-store                │
+                            └──────────────────────────────────────────┘
+                                          │
+                                          │  fetch(&quot;/api/metrics&quot;)
+                                          │  refetchInterval: 10s
+                                          ▼
+                            ┌──────────────────────────────────────────┐
+                            │   app/page.tsx (client)                  │
+                            │   useMetrics() → TanStack Query          │
+                            │   ↓                                      │
+                            │   ├─ HealthTab (8 cards)                 │
+                            │   └─ BusinessTab (9 cards)               │
+                            │                                          │
+                            │   每卡片 = &lt;CardShell title source&gt;      │
+                            │   source = sources[name] → badge color   │
+                            └──────────────────────────────────────────┘
+</code></pre>
+<h2>4. 各数据源处理细节</h2>
+<h3>4.1 Sentry(<code>lib/sources/sentry.ts</code>)</h3>
+<p><strong>Auth</strong>:<code>Authorization: Bearer sntryu_...</code>(User Auth Token,<strong>不能</strong>用 <code>sntrys_</code> Org Auth Token,后者只能上传 source map / 不能读 events)</p>
+<p><strong>Region routing</strong>:Mira 在 US 区,base URL 用 <code>https://us.sentry.io</code>,但 <code>projects/</code> 元数据查询用全局 <code>https://sentry.io</code>(region-agnostic)。</p>
+<p><strong>Project slug → numeric ID 自动解析</strong>:</p>
+<ul>
+<li>Sentry 的 <code>events-stats</code> / <code>events</code> / <code>sessions</code> 接受 <code>?project=&lt;numeric_id&gt;</code> 而非 slug,传 slug 报 <code>Invalid project parameter</code></li>
+<li>首次调用时 hit <code>/organizations/{org}/projects/</code> 列举 → 按 slug 匹配 → 缓存 ID 到 module-level <code>cachedProjectId</code>,后续请求复用</li>
+</ul>
+<p><strong>3 个 fetch 并行</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>用途</th>
+<th>字段</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>events-stats/?statsPeriod=24h&amp;interval=1h&amp;yAxis=count()&amp;query=event.type:error</code></td>
+<td>24h 错误数 trend(hourly buckets)</td>
+<td>24h trend + sum</td>
+</tr>
+<tr>
+<td><code>events/?statsPeriod=24h&amp;dataset=transactions&amp;field=count()&amp;field=p95(...)&amp;field=p99(...)</code></td>
+<td>24h transaction 数 + 延迟</td>
+<td>tx count + p95 + p99</td>
+</tr>
+<tr>
+<td><code>events/?statsPeriod=1h&amp;dataset=transactions&amp;field=count()</code></td>
+<td>1h transaction 数(算 1h 错误率分母)</td>
+<td>tx count</td>
+</tr>
+</tbody></table>
+<p><strong>错误率算法</strong>:</p>
+<pre><code>errorRate24h = errors_24h_sum / transactions_24h
+errorRate1h = errors_1h_bucket / transactions_1h
+</code></pre>
+<p><strong>采样说明</strong>:Mira prod 采样率 50%(<code>getSentrySampleRate()</code>),P95/P99 会有 sample bias,卡片显示 <code>注:Sentry 采样 50% · 高百分位有偏差</code>。</p>
+<p><strong>Web Vitals</strong>:同一个 <code>events/</code> 接口,<code>field=p75(measurements.{lcp,inp,cls,fcp,ttfb})</code>。<strong>注意 Mira 当前 <code>browserTracingIntegration</code> 没开 <code>enableInp</code></strong>,INP 返 <code>null</code>。</p>
+<p><strong>Crash-free</strong>:<code>sessions/?field=crash_free_rate(session)&amp;field=sum(session)&amp;statsPeriod=24h</code>,数据在 <code>groups[0].totals</code>。</p>
+<p><strong>重试</strong>:<code>sentryFetch</code> 失败一次后重试一次(600ms 间隔),应对用户本地代理抖动。</p>
+<hr>
+<h3>4.2 Langfuse(<code>lib/sources/langfuse.ts</code>)</h3>
+<p><strong>Auth</strong>:HTTP Basic <code>base64(publicKey:secretKey)</code>,host = <code>us.cloud.langfuse.com</code>(US 区,跟 Mira 的 LANGFUSE_BASEURL 一致)。</p>
+<p><strong>Host 命名</strong>:Mira 主仓 env 叫 <code>LANGFUSE_BASEURL</code>,本项目叫 <code>LANGFUSE_HOST</code>(同义,SDK 习惯命名)。</p>
+<p><strong>两个端点</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>用途</th>
+<th>数据形状</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/api/public/metrics/daily?fromTimestamp=24h前</code></td>
+<td>日聚合,服务端 group by model</td>
+<td><code>data[].usage[]</code> per-model {input/output/totalUsage, totalCost, countObservations, countTraces}</td>
+</tr>
+<tr>
+<td><code>/api/public/observations?type=SPAN&amp;fromStartTime=2h前&amp;limit=100&amp;page=N</code></td>
+<td>工具调用样本(name 形如 <code>ai.toolCall {tool}</code>)</td>
+<td><code>data[].name</code> 客户端 group by</td>
+</tr>
+</tbody></table>
+<p><strong>为什么 daily 不查 24h 全量 observations</strong>:</p>
+<ul>
+<li>Mira 24h 生成 16 万+ generations,客户端聚合不现实</li>
+<li>但 daily metrics 已 server-side 算好 cost/tokens/model,完美匹配卡片所需</li>
+<li>SPAN 工具调用 daily endpoint 不暴露,只能拉 observations,所以<strong>窗口缩到 2h + 分页 limit=100 × 2 页</strong>,作为&quot;近期工具活跃度样本&quot;</li>
+</ul>
+<p><strong>Cache 处理</strong>:observations 响应大(每个含 input/output 全量上下文),单页 ~3MB &gt; Next.js 2MB fetch cache 上限,所以<strong>统一 <code>cache: &quot;no-store&quot;</code>,绕过 Next 缓存</strong>。<code>metrics/daily</code> 也用 no-store(响应小,保持一致策略)。</p>
+<p><strong>重试</strong>:同 Sentry,失败 1 次重试 1 次。</p>
+<p><strong>已知数据缺口</strong>:</p>
+<ul>
+<li>Mira Langfuse trace 没标 <code>status=success/failed</code> → 任务成功率/LLM provider 错误率无法直接算,后两个卡片走 mock</li>
+<li>部分模型名重复(<code>claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4.6</code>)未规整,后两个 cost 算 $0(Langfuse 价格表按 model id 精确匹配)</li>
+</ul>
+<hr>
+<h3>4.3 PostHog(<code>lib/sources/posthog.ts</code>)</h3>
+<p><strong>Auth</strong>:<code>Authorization: Bearer phx_...</code>(Personal API Key,scope = &quot;Performing analytics queries&quot;)。</p>
+<p><strong>Region</strong>:<code>us.posthog.com</code>(根据 Mira 实际部署)。</p>
+<p><strong>唯一端点</strong>:<code>POST /api/projects/@current/query/</code>,body <code>{&quot;query&quot;: {&quot;kind&quot;: &quot;HogQLQuery&quot;, &quot;query&quot;: &quot;&lt;SQL&gt;&quot;}}</code>。</p>
+<p><strong>4 条 HogQL</strong>:</p>
+<pre><code class="language-sql">-- DAU trend (30d)
+SELECT toString(toDate(timestamp)) AS day, count(DISTINCT distinct_id) AS dau
+FROM events
+WHERE event = &#39;$pageview&#39; AND timestamp &gt;= now() - INTERVAL 30 DAY
+GROUP BY day ORDER BY day
+
+-- 新增用户 trend (30d)
+SELECT toString(toDate(timestamp)) AS day, count() AS n
+FROM events
+WHERE event = &#39;sign_up&#39; AND timestamp &gt;= now() - INTERVAL 30 DAY
+GROUP BY day ORDER BY day
+
+-- 任务创建 trend (30d)
+SELECT toString(toDate(timestamp)) AS day, count() AS n
+FROM events
+WHERE event = &#39;task_created&#39; AND timestamp &gt;= now() - INTERVAL 30 DAY
+GROUP BY day ORDER BY day
+
+-- 消息发送 trend (30d)
+SELECT toString(toDate(timestamp)) AS day, count() AS n
+FROM events
+WHERE event = &#39;message_sent&#39; AND timestamp &gt;= now() - INTERVAL 30 DAY
+GROUP BY day ORDER BY day
+
+-- MAU
+SELECT count(DISTINCT distinct_id) AS mau
+FROM events
+WHERE event = &#39;$pageview&#39; AND timestamp &gt;= now() - INTERVAL 30 DAY
+</code></pre>
+<p><strong>响应形状</strong>:<code>{results: [[day, value], ...], columns: [&quot;day&quot;, &quot;n&quot;]}</code>。每行是 array,顺序对应 columns。</p>
+<p><strong>漏斗 + 留存暂时 mock</strong>:PostHog Insights API 的 funnel / retention 请求体复杂(stages 配置),v1 没接,卡片显示 mock。</p>
+<p><strong>速率限制</strong>:2400 req/hour for Query API,看板 10s 轮询 = 360/hr,远低于上限。</p>
+<hr>
+<h3>4.4 Railway(<code>lib/sources/railway.ts</code>)</h3>
+<p><strong>Auth</strong>:<code>Project-Access-Token: &lt;UUID&gt;</code>(<strong>注意不是 Bearer</strong>)。这是 Railway Project Token 的官方调用方式 — 之前用 Bearer 一直 401。</p>
+<p><strong>Region</strong>:无,GraphQL endpoint 全球同一个 <code>https://backboard.railway.app/graphql/v2</code>。</p>
+<p><strong>GraphQL query</strong>:</p>
+<pre><code class="language-graphql">query D($projectId: String!, $environmentId: String!) {
+  deployments(input: { projectId: $projectId, environmentId: $environmentId }, first: 20) {
+    edges {
+      node {
+        id
+        status            # SUCCESS | FAILED | CRASHED | BUILDING | DEPLOYING | REMOVED
+        createdAt
+        service { name }
+        meta              # JSON scalar(不能子查询)
+      }
+    }
+  }
+}
+</code></pre>
+<p><strong><code>meta</code> 字段坑</strong>:Railway schema 把 <code>meta</code> 标为 JSON scalar 类型,不能 <code>meta { commitHash commitMessage }</code> 选子字段,会报 GraphQL validation error。<strong>必须只写 <code>meta</code></strong>,服务端返回完整 JSON。</p>
+<p><strong>Commit 信息提取</strong>:</p>
+<ul>
+<li>如果 <code>meta.commitHash</code> 存在(GitHub-driven 部署)→ 用 <code>commitHash</code> + <code>commitMessage</code></li>
+<li>如果只有 <code>meta.cliMessage</code>(CLI 上传部署,如 <code>Deploy stable v0.59.2 (6cf256d) by lihuimingxs</code>)→ 正则 <code>/^Deploy\s+\S+\s+(v?[\d.]+)\s+\(([a-f0-9]+)\)\s+by\s+(\S+)$/</code> 提取 version + sha + author</li>
+</ul>
+<p><strong>Dedup</strong>:多次部署同一 service 时,按 <code>service.name</code> group 取最新一次(<code>first: 20</code> 返回时间倒序,Map.set 取第一次出现)。</p>
+<p><strong>Postgres 服务</strong>:Railway 托管 DB 也在 deployments 列表里,但没 commit info,UI 显示 <code>—</code>。</p>
+<hr>
+<h3>4.5 Statuspage.io(<code>lib/sources/statuspage.ts</code>)</h3>
+<p><strong>Auth</strong>:无,公开 endpoint。</p>
+<p><strong>Endpoints</strong>:6 家固定 statuspage:</p>
+<pre><code>https://status.sentry.io/api/v2/status.json
+https://www.vercel-status.com/api/v2/status.json
+https://www.cloudflarestatus.com/api/v2/status.json
+https://status.anthropic.com/api/v2/status.json
+https://status.openai.com/api/v2/status.json
+https://railway.statuspage.io/api/v2/status.json
+</code></pre>
+<p><strong>响应映射</strong>:<code>status.indicator</code> 标准化:</p>
+<ul>
+<li><code>none|maintenance</code> → <code>operational</code></li>
+<li><code>minor</code> → <code>degraded</code></li>
+<li><code>major|critical</code> → <code>down</code></li>
+<li>其他 / fetch 失败 → <code>unknown</code></li>
+</ul>
+<p><strong>并发拉取</strong>:<code>Promise.all(PROVIDERS.map(...))</code>,每个 6s 超时,单家失败用 try/catch 标 <code>unknown</code> 不影响其他。</p>
+<p><strong>已知问题</strong>:OpenAI statuspage 当前返空响应,猜测他们换了 statuspage 提供商但保留了旧 URL。<strong>状态会一直显示 unknown,直到他们换回标准 statuspage.io 或者我们换 URL</strong>。</p>
+<hr>
+<h3>4.6 Ping(<code>lib/sources/ping.ts</code>)</h3>
+<p><strong>Auth</strong>:无。</p>
+<p><strong>逻辑</strong>:</p>
+<pre><code class="language-typescript">performance.now() 起 → fetch(MIRA_HEALTH_URL, no-store) → performance.now() 止 → latencyMs
+status = res.ok ? &quot;up&quot; : &quot;down&quot;
+</code></pre>
+<p><strong>超时</strong>:8s。失败时 <code>status=&quot;down&quot;, latencyMs=null</code>,catch 内部不抛。</p>
+<hr>
+<h2>5. 聚合层(<code>lib/sources/index.ts</code>)</h2>
+<p><strong>模式</strong>:Promise.allSettled-style + mock fallback。</p>
+<pre><code class="language-typescript">export const fetchMetrics = async (): Promise&lt;MetricsResponse&gt; =&gt; {
+  const baseline = mockResponse();              // 所有字段 mock 填满
+  const sources = baseline.sources;             // 所有源默认 ok=false, configured=false, message=&quot;mock&quot;
+  
+  const [ping, statuspage, railway, growth, usage, llm, sla, vitals, crashFree] = await Promise.all([
+    settled(fetchPing()),
+    settled(fetchStatuspages()),
+    isConfigured(&quot;railway&quot;) ? settled(fetchRailwayDeployments()) : Promise.resolve(null),
+    isConfigured(&quot;posthog&quot;) ? settled(fetchGrowth()) : Promise.resolve(null),
+    isConfigured(&quot;posthog&quot;) ? settled(fetchUsage()) : Promise.resolve(null),
+    isConfigured(&quot;langfuse&quot;) ? settled(fetchLlmMetrics()) : Promise.resolve(null),
+    isConfigured(&quot;sentry&quot;) ? settled(fetchApiSla()) : Promise.resolve(null),
+    isConfigured(&quot;sentry&quot;) ? settled(fetchWebVitals()) : Promise.resolve(null),
+    isConfigured(&quot;sentry&quot;) ? settled(fetchCrashFree()) : Promise.resolve(null),
+  ]);
+  
+  // 对每个 result:
+  // status === &quot;fulfilled&quot; → baseline.&lt;field&gt; = result.value;  sources.&lt;name&gt; = { ok: true, configured: true }
+  // status === &quot;rejected&quot;  → 保留 mock + sources.&lt;name&gt; = { ok: false, configured: true, message: String(reason) }
+  
+  return baseline;
+};
+</code></pre>
+<p><strong>关键设计:</strong></p>
+<ol>
+<li><strong>mock 作 baseline</strong>:任何源失败都不让卡片空着 — 仍渲染 mock 占位,badge 显示 <code>&lt;source&gt; · err</code></li>
+<li><strong><code>isConfigured(source)</code> 短路</strong>:env 没配的源直接 resolve(null),不浪费一次失败 fetch</li>
+<li><strong><code>settled()</code> helper 包装</strong>:把 Promise 转 PromiseSettledResult,绝不 reject 主链路</li>
+<li><strong>每源独立 ok / message</strong>:UI badge 实时反映哪个源真实工作 / 哪个是 mock / 哪个 error,debug 友好</li>
+<li><strong>并行而非串行</strong>:Promise.all 让 9 个 fetch 同时发,总耗时 ≈ 最慢的那个(通常 Sentry 1-2s)</li>
+</ol>
+<hr>
+<h2>6. 缓存与刷新</h2>
+<p><strong>服务端</strong>:</p>
+<ul>
+<li><code>/api/metrics</code> 路由设 <code>dynamic = &quot;force-dynamic&quot;</code> + <code>revalidate = 0</code> + <code>Cache-Control: no-store</code> — 完全不缓存,每次请求都重新跑 fetchMetrics()</li>
+<li>各 source client 的 fetch 也用 <code>cache: &quot;no-store&quot;</code> 绕过 Next.js fetch cache(主要因为 Langfuse 响应超 2MB)</li>
+</ul>
+<p><strong>客户端</strong>:</p>
+<ul>
+<li>TanStack Query <code>refetchInterval: 10_000</code> — 每 10s 主动 fetch /api/metrics</li>
+<li><code>staleTime: 5_000</code> — 5s 内不重复请求(防止用户切 tab 触发额外请求)</li>
+<li><code>refetchOnWindowFocus: true</code> — 切回浏览器立刻刷一次</li>
+<li><code>retry: 2</code> — 失败重试 2 次</li>
+</ul>
+<p><strong>最终行为</strong>:每 10s 全链路刷一遍,从 6 个云服务拉新数据 → 聚合 → 推到前端。源失败时该卡片 fallback mock 但不影响其他。</p>
+<hr>
+<h2>7. 错误处理与 Fallback 矩阵</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>表现</th>
+<th>用户视角</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Env 未配</td>
+<td>source.configured=false, message=&quot;mock&quot;</td>
+<td>badge 显示 <code>&lt;src&gt; · mock</code>,outline 样式</td>
+</tr>
+<tr>
+<td>Fetch 网络失败</td>
+<td>settled 捕获 → source.ok=false, error msg 写入</td>
+<td>badge 显示 <code>&lt;src&gt; · err</code>,红色 destructive 样式</td>
+</tr>
+<tr>
+<td>API 返 4xx/5xx</td>
+<td>sentryFetch/langfuse 等 throw Error → 同上</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>单源失败</td>
+<td>aggregator 继续返其他 5 源 + 该源 mock</td>
+<td>其他卡片正常,失败卡片显示 mock 占位 + err badge</td>
+</tr>
+<tr>
+<td>/api/metrics 整个 500</td>
+<td>TanStack Query retry × 2 + 顶部 header 显示 &quot;fetch error&quot;</td>
+<td>老数据保持显示 5s,然后 retry</td>
+</tr>
+<tr>
+<td>dev 模式 .env 改了</td>
+<td>必须 kill + restart,Turbopack 不自动 reload .env</td>
+<td>改 env 后 <code>lsof -ti :3001 | xargs kill</code> 重启</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>8. 卡片 → 数据源映射(快速索引)</h2>
+<h3>Health Tab</h3>
+<table>
+<thead>
+<tr>
+<th>卡片</th>
+<th>数据源</th>
+<th>处理位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>上游 SaaS 状态(6 灯)</td>
+<td>Statuspage × 6</td>
+<td><code>statuspage.ts</code></td>
+</tr>
+<tr>
+<td>部署状态(mira-next × N + Postgres)</td>
+<td>Railway GraphQL</td>
+<td><code>railway.ts</code></td>
+</tr>
+<tr>
+<td>健康检查 ping</td>
+<td>自建 ping</td>
+<td><code>ping.ts</code></td>
+</tr>
+<tr>
+<td>API SLA(error% + P95/P99 + 24h trend)</td>
+<td>Sentry events-stats + events</td>
+<td><code>sentry.ts::fetchApiSla</code></td>
+</tr>
+<tr>
+<td>Web Vitals(LCP/INP/CLS/FCP/TTFB P75)</td>
+<td>Sentry events</td>
+<td><code>sentry.ts::fetchWebVitals</code></td>
+</tr>
+<tr>
+<td>Crash-free Sessions</td>
+<td>Sentry sessions</td>
+<td><code>sentry.ts::fetchCrashFree</code></td>
+</tr>
+<tr>
+<td>LLM Provider 错误</td>
+<td>mock(Langfuse 缺 status 字段)</td>
+<td><code>mock.ts</code></td>
+</tr>
+<tr>
+<td>沙箱执行</td>
+<td>mock(Sentry 缺 component tag)</td>
+<td><code>mock.ts</code></td>
+</tr>
+</tbody></table>
+<h3>Business Tab</h3>
+<table>
+<thead>
+<tr>
+<th>卡片</th>
+<th>数据源</th>
+<th>处理位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>DAU / MAU</td>
+<td>PostHog HogQL</td>
+<td><code>posthog.ts::fetchGrowth</code></td>
+</tr>
+<tr>
+<td>新增用户(sign_up)</td>
+<td>PostHog HogQL</td>
+<td><code>posthog.ts::fetchGrowth</code></td>
+</tr>
+<tr>
+<td>激活漏斗</td>
+<td>mock(PostHog Funnels API 未接)</td>
+<td><code>mock.ts</code></td>
+</tr>
+<tr>
+<td>留存 D1/D7/D30</td>
+<td>mock(PostHog Retention API 未接)</td>
+<td><code>mock.ts</code></td>
+</tr>
+<tr>
+<td>任务创建(task_created)</td>
+<td>PostHog HogQL</td>
+<td><code>posthog.ts::fetchUsage</code></td>
+</tr>
+<tr>
+<td>消息发送(message_sent)</td>
+<td>PostHog HogQL</td>
+<td><code>posthog.ts::fetchUsage</code></td>
+</tr>
+<tr>
+<td>Token &amp; 成本 by Model</td>
+<td>Langfuse metrics/daily</td>
+<td><code>langfuse.ts::fetchLlmMetrics</code></td>
+</tr>
+<tr>
+<td>工具调用 Top 8</td>
+<td>Langfuse observations</td>
+<td><code>langfuse.ts::fetchLlmMetrics</code></td>
+</tr>
+<tr>
+<td>平均任务成本</td>
+<td>Langfuse metrics/daily(totalCost / countTraces)</td>
+<td><code>langfuse.ts::fetchLlmMetrics</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>9. 运行 / 部署</h2>
+<h3>本地开发</h3>
+<pre><code class="language-bash">cd /Users/tim/career/jsProject/mira-monitor
+
+# 配 secret
+cp .env.example .env.local
+# 编辑 .env.local 填入 5 组 keys(PostHog / Langfuse / Sentry / Railway / Health URL)
+
+# 启动
+./node_modules/.bin/next dev --port 3001
+
+# 浏览器
+open http://localhost:3001
+</code></pre>
+<p><strong>env 改动后必须重启</strong>:Turbopack 不自动 reload <code>.env.local</code>,改 env 后:</p>
+<pre><code class="language-bash">lsof -ti :3001 | xargs kill &amp;&amp; ./node_modules/.bin/next dev --port 3001
+</code></pre>
+<h3>部署(待做)</h3>
+<p>目标:Railway 上挂一个 service,跟 Mira team 同 workspace,共享 env vars。</p>
+<p>未做:</p>
+<ul>
+<li>重新加 auth(Basic Auth middleware 已删,公网部署前必须加回)</li>
+<li>Dockerfile / railway.toml</li>
+<li>CI</li>
+</ul>
+<hr>
+<h2>10. 已知坑 &amp; TODO</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>状态</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mira <code>browserTracingIntegration</code> 没开 <code>enableInp</code></td>
+<td>待补 mira-work</td>
+<td>INP 卡片显示 <code>—</code> 直到补埋点</td>
+</tr>
+<tr>
+<td>Langfuse trace 没标 <code>status</code> 字段</td>
+<td>待补 mira-work</td>
+<td>任务成功率 / LLM provider 错误率算不准</td>
+</tr>
+<tr>
+<td>Sentry 沙箱错误没 <code>component=sandbox</code> tag</td>
+<td>待补 mira-work</td>
+<td>沙箱卡片只能 mock</td>
+</tr>
+<tr>
+<td>OpenAI statuspage 返空响应</td>
+<td>待 OpenAI 修(或换 URL)</td>
+<td>该灯一直 unknown</td>
+</tr>
+<tr>
+<td>Mira 内 LLM model 命名不一致</td>
+<td>待规整 mira-work</td>
+<td><code>claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4.6</code> 三种写法并存,后两种 Langfuse 价格表算 $0</td>
+</tr>
+<tr>
+<td>Sentry 采样率 50%</td>
+<td>设计选择</td>
+<td>P95/P99 数字有偏差,卡片下显示 sampling note</td>
+</tr>
+<tr>
+<td>PostHog Funnels / Retention</td>
+<td>待接</td>
+<td>漏斗 + 留存卡片当前 mock</td>
+</tr>
+<tr>
+<td>API P99 包含 SSE 长连接</td>
+<td>待加 filter</td>
+<td><code>/api/task</code> 类 streaming transaction 算到 P99 里,数字偏高;可以 <code>&amp;query=!transaction:/api/task/*</code> 排除</td>
+</tr>
+<tr>
+<td>Basic Auth 已删</td>
+<td>改为公网部署前要加回</td>
+<td>当前 dev 阶段无认证</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>11. v2 路线图:Cost 面板 + 告警(规划中,未实施)</h2>
+<p>v1 是无状态实时聚合 — 所有数据 10s 拉一次,不落地。v2 加两个独立 track,<strong>都需要存储 + 主动行为</strong>(被推 / 推出去),架构上从&quot;纯只读看板&quot;变成&quot;看板 + 数据接收器 + 告警发射器&quot;。</p>
+<h3>11.1 架构变化总览</h3>
+<pre><code>                                                          ┌───────────────────────────┐
+                                                          │ 你的数据抓取 pipeline      │
+                                                          │ (海外 LLM/Exa/Railway/    │
+                                                          │  Apollo 用量已在你这边汇总)│
+                                                          └─────────────┬─────────────┘
+                                                                        │
+                                                                        │ HTTP POST(每日 1 次或多次)
+                                                                        ▼
+                                              ┌─────────────────────────────────────────────┐
+                                              │ POST /api/ingest/cost                       │
+                                              │   - Bearer &lt;INGEST_TOKEN&gt; 守门              │
+                                              │   - Zod 校验 payload                         │
+                                              │   - Upsert into SQLite                      │
+                                              └─────────────────────┬───────────────────────┘
+                                                                    │
+                                              ┌─────────────────────▼───────────────────────┐
+                                              │ SQLite(bun:sqlite,文件持久化)              │
+                                              │                                             │
+                                              │  daily_cost (date,source,line_item,...)     │
+                                              │  source_snapshot (date,source,balance,...)  │
+                                              │  alert_state (rule_id,state,fired_at,...)   │
+                                              │  alert_history (rule_id,fired_at,...)       │
+                                              └────────┬────────────────────────────┬───────┘
+                                                       │                            │
+                                                       ▼                            ▼
+                              ┌────────────────────────────────┐    ┌──────────────────────────────────┐
+                              │ GET /api/cost                  │    │ alert engine                     │
+                              │   读 SQLite,返时序 + 当日明细  │    │ - 在 /api/metrics 评估周期内跑   │
+                              └─────────────┬──────────────────┘    │ - 加载 yaml 规则                 │
+                                            │                       │ - 对比 metric vs threshold       │
+                                            ▼                       │ - state machine(firing/resolved│
+                              ┌────────────────────────────────┐    │   + cooldown)                   │
+                              │ Cost Tab(新增)                │    │ - 状态变更时推 webhook           │
+                              │   - 4 个源 card                │    └─────────────┬────────────────────┘
+                              │   - 30d 折线趋势               │                  │
+                              │   - 当日明细 drill-down        │                  │ HTTP POST(state-change 时)
+                              └────────────────────────────────┘                  ▼
+                                                                    ┌──────────────────────────────────┐
+                                                                    │ 你提供的告警 webhook             │
+                                                                    │ (飞书机器人 / 内部告警系统 etc.) │
+                                                                    └──────────────────────────────────┘
+</code></pre>
+<p><strong>关键差异</strong>:</p>
+<ul>
+<li>v1 每次请求都重新 fetch upstream;v2 cost 数据<strong>只读 SQLite</strong>,不依赖外部源即时可用</li>
+<li>v1 不需要主动行为;v2 告警引擎在每次 /api/metrics 后<strong>主动评估 + 推 webhook</strong>(state 变化时)</li>
+<li>v1 全部 in-memory;v2 写盘 → 部署要考虑 volume mount(Railway 部署时 SQLite 文件需挂在 persistent volume)</li>
+</ul>
+<h3>11.2 Track 1:Cost / FinOps</h3>
+<h4>11.2.1 接收契约 <code>POST /api/ingest/cost</code></h4>
+<p><strong>Auth</strong>:<code>Authorization: Bearer &lt;INGEST_TOKEN&gt;</code> (env <code>INGEST_TOKEN</code>)</p>
+<p><strong>Body</strong>:</p>
+<pre><code class="language-json">{
+  &quot;date&quot;: &quot;2026-05-13&quot;,
+  &quot;snapshots&quot;: [
+    {
+      &quot;source&quot;: &quot;ai-gateway&quot;,
+      &quot;balance_usd&quot;: 715.20,
+      &quot;items&quot;: [
+        {
+          &quot;line_item&quot;: &quot;anthropic/claude-sonnet-4.6&quot;,
+          &quot;cost_usd&quot;: 607.65,
+          &quot;request_count&quot;: 5179,
+          &quot;metadata&quot;: {
+            &quot;input_tokens&quot;: 45400000,
+            &quot;output_tokens&quot;: 7300000,
+            &quot;cache_read&quot;: 376600000,
+            &quot;cache_write&quot;: 102300000
+          }
+        }
+      ]
+    },
+    { &quot;source&quot;: &quot;exa&quot;, &quot;items&quot;: [ { &quot;line_item&quot;: &quot;Summaries&quot;, &quot;cost_usd&quot;: 3.904, &quot;request_count&quot;: 3904 } ] },
+    { &quot;source&quot;: &quot;railway&quot;, &quot;items&quot;: [ { &quot;line_item&quot;: &quot;monthly_estimate&quot;, &quot;cost_usd&quot;: 148.09 } ] },
+    { &quot;source&quot;: &quot;apollo&quot;, &quot;items&quot;: [ { &quot;line_item&quot;: &quot;mixed_people/api_search&quot;, &quot;request_count&quot;: 80, &quot;cost_usd&quot;: 86.00 } ] }
+  ]
+}
+</code></pre>
+<p><strong>幂等</strong>:PK <code>(date, source, line_item)</code> upsert,同一天重复推不会重复计。
+<strong>Validation</strong>:zod schema,失败返 400 + 详细错误。
+<strong>Idempotency-Key</strong>(可选):header <code>Idempotency-Key</code>,服务端去重相同 key 的请求。</p>
+<h4>11.2.2 SQLite Schema</h4>
+<pre><code class="language-sql">CREATE TABLE daily_cost (
+  date         TEXT NOT NULL,         -- &#39;2026-05-13&#39;
+  source       TEXT NOT NULL,         -- &#39;ai-gateway&#39; | &#39;exa&#39; | &#39;railway&#39; | &#39;apollo&#39;
+  line_item    TEXT NOT NULL,         -- &#39;anthropic/claude-sonnet-4.6&#39; | &#39;Summaries&#39; | &#39;monthly_estimate&#39; | ...
+  cost_usd     REAL NOT NULL DEFAULT 0,
+  request_count INTEGER,
+  metadata     TEXT,                  -- JSON blob(tokens / period / 自由字段)
+  recorded_at  TEXT NOT NULL,         -- ISO8601, last write time
+  PRIMARY KEY (date, source, line_item)
+);
+
+CREATE INDEX idx_daily_cost_date ON daily_cost(date);
+CREATE INDEX idx_daily_cost_source ON daily_cost(source, date);
+
+CREATE TABLE source_snapshot (
+  date         TEXT NOT NULL,
+  source       TEXT NOT NULL,
+  balance_usd  REAL,                  -- 剩余余额(如 AI Gateway 充值制账户)
+  total_cost_usd REAL,                -- 当日总成本(冗余 sum,for fast lookup)
+  total_requests INTEGER,
+  metadata     TEXT,                  -- JSON
+  recorded_at  TEXT NOT NULL,
+  PRIMARY KEY (date, source)
+);
+</code></pre>
+<p><strong>冗余 <code>total_cost_usd</code></strong> 是为了 30d 折线图查询快(不用 GROUP BY)。Trade-off:写入时双写(detail + summary),读取时一表搞定。</p>
+<h4>11.2.3 暴露给 UI:<code>GET /api/cost</code></h4>
+<p>返回结构:</p>
+<pre><code class="language-json">{
+  &quot;today&quot;: &quot;2026-05-13&quot;,
+  &quot;summary&quot;: {
+    &quot;ai-gateway&quot;: { &quot;cost_usd&quot;: 630.56, &quot;balance_usd&quot;: 715.20, &quot;request_count&quot;: 14237 },
+    &quot;exa&quot;: { &quot;cost_usd&quot;: 9.33, &quot;request_count&quot;: 5740 },
+    &quot;railway&quot;: { &quot;cost_usd&quot;: 148.09, &quot;metadata&quot;: { &quot;period&quot;: &quot;month_to_date&quot; } },
+    &quot;apollo&quot;: { &quot;cost_usd&quot;: 86.00, &quot;request_count&quot;: 172 }
+  },
+  &quot;trend30d&quot;: {
+    &quot;ai-gateway&quot;: [{ &quot;date&quot;: &quot;2026-04-14&quot;, &quot;cost_usd&quot;: 502.11 }, ...],
+    &quot;exa&quot;: [...],
+    &quot;railway&quot;: [...],
+    &quot;apollo&quot;: [...]
+  },
+  &quot;breakdown_today&quot;: {
+    &quot;ai-gateway&quot;: [
+      { &quot;line_item&quot;: &quot;anthropic/claude-sonnet-4.6&quot;, &quot;cost_usd&quot;: 607.65, &quot;request_count&quot;: 5179 },
+      ...
+    ],
+    ...
+  }
+}
+</code></pre>
+<h4>11.2.4 UI:新增 Cost Tab</h4>
+<table>
+<thead>
+<tr>
+<th>卡片</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>AI Gateway</td>
+<td>当日 $$$ + 剩余余额 + 30d 折线 + Top 3 模型</td>
+</tr>
+<tr>
+<td>Exa</td>
+<td>当日 $$ + 4 个 line item 横向 bar + 30d 折线</td>
+</tr>
+<tr>
+<td>Railway</td>
+<td>月度预估 + 历史月度 bar</td>
+</tr>
+<tr>
+<td>Apollo</td>
+<td>当日 request 数 + 估算 $$ + endpoint 调用分布</td>
+</tr>
+<tr>
+<td>总览</td>
+<td>4 源 stacked area chart(30d 累计成本走势)</td>
+</tr>
+</tbody></table>
+<p>布局:跟当前 Tab 一致,3 column grid,深色 + sparkline。</p>
+<h3>11.3 Track 2:告警</h3>
+<h4>11.3.1 规则配置(<code>alerts.yaml</code>,Git 管理)</h4>
+<pre><code class="language-yaml">realtime_rules:
+  - id: ping-down
+    description: Mira 主站 /api/health 不通
+    metric: health.ping.status
+    condition: { op: &quot;!=&quot;, value: &quot;up&quot; }
+    severity: critical
+    cooldown_minutes: 5
+
+  - id: deploy-failed
+    description: Railway service 部署失败
+    metric: health.deploy[*].status
+    condition: { op: &quot;in&quot;, value: [&quot;FAILED&quot;, &quot;CRASHED&quot;] }
+    severity: critical
+    cooldown_minutes: 10
+
+  - id: upstream-saas-down
+    description: 上游 SaaS down
+    metric: health.upstream[*].status
+    condition: { op: &quot;==&quot;, value: &quot;down&quot; }
+    severity: warning
+    cooldown_minutes: 30
+
+  - id: api-error-rate-high
+    description: API 24h 错误率超 1%
+    metric: health.apiSla.errorRate24h
+    condition: { op: &quot;&gt;&quot;, value: 0.01 }
+    severity: warning
+    cooldown_minutes: 60
+
+  - id: api-p95-high
+    description: API P95 &gt; 3s
+    metric: health.apiSla.p95LatencyMs
+    condition: { op: &quot;&gt;&quot;, value: 3000 }
+    severity: warning
+    cooldown_minutes: 60
+
+  - id: crash-free-low
+    description: Crash-free sessions &lt; 99%
+    metric: health.crashFree.rate
+    condition: { op: &quot;&lt;&quot;, value: 0.99 }
+    severity: critical
+    cooldown_minutes: 30
+
+  - id: web-vitals-lcp-poor
+    description: LCP P75 &gt; 2.5s
+    metric: health.webVitals.lcpP75
+    condition: { op: &quot;&gt;&quot;, value: 2500 }
+    severity: info
+    cooldown_minutes: 240
+
+  - id: source-error
+    description: 上游数据源 fetch 失败
+    metric: sources.*.ok
+    condition: { op: &quot;==&quot;, value: false, where: &quot;configured == true&quot; }
+    severity: info
+    cooldown_minutes: 30
+
+# v2 后续(等业务指标确定)
+business_rules:
+  - id: dau-drop
+    description: DAU 较 7d 均值下降 &gt; 30%
+    metric: business.growth.dau
+    condition: { op: &quot;wow_drop&quot;, value: 0.30 }
+    severity: warning
+    cooldown_minutes: 240
+    eval_interval: 5m       # 业务指标定时跑,不跟随 10s metrics
+
+  - id: daily-cost-spike
+    description: 当日 LLM 成本 &gt; $1000
+    metric: business.llm.totalCost24h
+    condition: { op: &quot;&gt;&quot;, value: 1000 }
+    severity: critical
+    cooldown_minutes: 240
+</code></pre>
+<p><strong>两类规则的运行时差异</strong>:</p>
+<ul>
+<li><code>realtime_rules</code>:跟随每次 <code>/api/metrics</code>(10s)评估。适合 health/SLA 这种&quot;状态型&quot;指标。</li>
+<li><code>business_rules</code>:独立 cron,默认 5min。适合&quot;趋势型&quot;指标(需要历史对比的)。</li>
+</ul>
+<h4>11.3.2 状态机</h4>
+<pre><code>              ┌─────────────┐
+              │   normal    │ (规则未触发)
+              └──────┬──────┘
+                     │ condition matched
+                     ▼
+              ┌─────────────┐  notify webhook { status: firing }
+              │   firing    │─────────────────────────────────────┐
+              └──────┬──────┘                                     │
+                     │ condition still matched within cooldown    │
+                     │   → silent(do NOT notify again)            │
+                     │                                            │
+                     │ condition cleared                          │
+                     ▼                                            │
+              ┌─────────────┐  notify webhook { status: resolved }│
+              │  resolved   │─────────────────────────────────────┘
+              └──────┬──────┘
+                     │ (transient state, immediately → normal)
+                     ▼
+                  normal
+</code></pre>
+<p><strong>Cooldown 行为</strong>:</p>
+<ul>
+<li>状态 <code>firing</code> 后,即使条件持续 true,只在 <code>cooldown_minutes</code> 过后才<strong>重新</strong>通知(避免刷屏)</li>
+<li>状态从 <code>firing</code> → <code>resolved</code> 必通知一次(&quot;恢复了&quot;)</li>
+<li>用户可手动 silence 某规则 N 小时(写 alert_state.silenced_until)</li>
+</ul>
+<h4>11.3.3 SQLite Schema</h4>
+<pre><code class="language-sql">CREATE TABLE alert_state (
+  rule_id          TEXT PRIMARY KEY,
+  state            TEXT NOT NULL,         -- &#39;normal&#39; | &#39;firing&#39;
+  current_value    TEXT,                  -- 触发时的值(JSON,因为可能是 object)
+  fired_at         TEXT,                  -- 进入 firing 的时间
+  last_notified_at TEXT,                  -- 上次推 webhook 的时间(算 cooldown)
+  silenced_until   TEXT                   -- 手动 silence 截止时间
+);
+
+CREATE TABLE alert_history (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  rule_id          TEXT NOT NULL,
+  status           TEXT NOT NULL,         -- &#39;firing&#39; | &#39;resolved&#39;
+  severity         TEXT NOT NULL,
+  current_value    TEXT,
+  threshold        TEXT,
+  fired_at         TEXT NOT NULL,
+  notified         INTEGER DEFAULT 0      -- 0 = 抑制(cooldown 内),1 = 已通知
+);
+
+CREATE INDEX idx_alert_history_rule ON alert_history(rule_id, fired_at DESC);
+</code></pre>
+<h4>11.3.4 推送契约(发给你的告警系统)</h4>
+<pre><code>POST &lt;ALERT_WEBHOOK_URL&gt;
+Authorization: Bearer &lt;ALERT_WEBHOOK_TOKEN&gt;   (可选,看你的接收方)
+Content-Type: application/json
+
+{
+  &quot;rule_id&quot;: &quot;api-error-rate-high&quot;,
+  &quot;severity&quot;: &quot;warning&quot;,
+  &quot;status&quot;: &quot;firing&quot;,                      # firing | resolved
+  &quot;title&quot;: &quot;Mira API 24h 错误率超阈值&quot;,
+  &quot;summary&quot;: &quot;当前 2.34%,阈值 1%&quot;,
+  &quot;current_value&quot;: 0.0234,
+  &quot;threshold&quot;: 0.01,
+  &quot;metric_path&quot;: &quot;health.apiSla.errorRate24h&quot;,
+  &quot;triggered_at&quot;: &quot;2026-05-14T10:23:45Z&quot;,
+  &quot;dashboard_url&quot;: &quot;http://mira-monitor/health&quot;
+}
+</code></pre>
+<p><strong>契约可调</strong> — 你方接收端期望什么字段,我适配你。</p>
+<h4>11.3.5 评估器实现位置</h4>
+<pre><code class="language-typescript">// lib/alerts/engine.ts
+export async function evaluateRealtimeRules(metrics: MetricsResponse): Promise&lt;void&gt; {
+  const rules = loadRules(&quot;realtime&quot;);
+  for (const rule of rules) {
+    const value = extractMetric(metrics, rule.metric);
+    const matched = evaluateCondition(value, rule.condition);
+    const state = await getAlertState(rule.id);
+
+    if (matched &amp;&amp; state.state === &quot;normal&quot;) {
+      await transition(rule, &quot;firing&quot;, value);
+      await pushWebhook(rule, &quot;firing&quot;, value);
+    } else if (matched &amp;&amp; state.state === &quot;firing&quot;) {
+      // already firing, check cooldown for re-notify
+      if (cooldownElapsed(state, rule)) {
+        await pushWebhook(rule, &quot;firing&quot;, value);
+        await updateLastNotified(rule.id);
+      }
+    } else if (!matched &amp;&amp; state.state === &quot;firing&quot;) {
+      await transition(rule, &quot;normal&quot;, value);
+      await pushWebhook(rule, &quot;resolved&quot;, value);
+    }
+  }
+}
+</code></pre>
+<p><strong>调用点</strong>:<code>app/api/metrics/route.ts</code> 的 GET handler 拿到 MetricsResponse 后,<strong>fire-and-forget</strong> 调一次(不阻塞响应):</p>
+<pre><code class="language-typescript">const data = await fetchMetrics();
+// don&#39;t await; let alerting run in background
+evaluateRealtimeRules(data).catch((e) =&gt; console.error(&quot;alert engine failed&quot;, e));
+return NextResponse.json(data);
+</code></pre>
+<p>业务规则的 cron(<code>business_rules</code>)在单独的 Bun timer 里跑,或者外部 cron(Railway 的 cron service)。</p>
+<h3>11.4 实施 Roadmap</h3>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>内容</th>
+<th>阻塞</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>A</strong></td>
+<td>加 <code>bun:sqlite</code> 依赖 + 建表 migration + storage layer</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>B</strong></td>
+<td>加 <code>POST /api/ingest/cost</code> endpoint(Bearer + zod + upsert)</td>
+<td>A</td>
+</tr>
+<tr>
+<td><strong>C</strong></td>
+<td>加 <code>GET /api/cost</code> endpoint + Cost Tab UI</td>
+<td>B + 收到首批推送数据</td>
+</tr>
+<tr>
+<td><strong>D</strong></td>
+<td>加 <code>alerts.yaml</code> 规则文件 + 评估器 + state machine</td>
+<td>A</td>
+</tr>
+<tr>
+<td><strong>E</strong></td>
+<td>加 webhook push client</td>
+<td>D + 用户给 webhook URL</td>
+</tr>
+<tr>
+<td><strong>F</strong></td>
+<td>加 alert history UI 子页(看历史触发记录)</td>
+<td>D + E</td>
+</tr>
+<tr>
+<td><strong>G</strong></td>
+<td>部署到 Railway:挂 volume 给 SQLite + 加回 auth(Basic Auth 或 SSO)</td>
+<td>C 或 F</td>
+</tr>
+</tbody></table>
+<p><strong>ABC</strong> 一组(Cost track,4-5 天)、<strong>DEF</strong> 一组(Alert track,3-4 天)、<strong>G</strong> 收尾(0.5 天)。Cost 和 Alert 两组<strong>独立可并行</strong>。</p>
+<h3>11.5 待确认的 4 件事(实施前的 blocker)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>决策点</th>
+<th>默认/推荐</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>Cost ingest payload 格式</td>
+<td>按 §11.2.1 提议 / 或用你 pipeline 现有格式</td>
+</tr>
+<tr>
+<td>2</td>
+<td>告警 webhook URL + 期望 payload</td>
+<td>等你方接收端 endpoint + payload spec</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>INGEST_TOKEN</code> 值(守门 cost ingest 端点)</td>
+<td>用户生成 / 让我生成</td>
+</tr>
+<tr>
+<td>4</td>
+<td>8 条 health 实时告警规则是否全开</td>
+<td>默认全开,后续按 cooldown / severity 调</td>
+</tr>
+</tbody></table>
+<h3>11.6 v2 增加的依赖与文件</h3>
+<p><strong>新依赖</strong>:</p>
+<ul>
+<li><code>bun:sqlite</code>(Bun 内置,无需 npm install)— 如果跑在 Node.js 模式可能要 <code>better-sqlite3</code></li>
+<li><code>zod</code> — payload 校验</li>
+</ul>
+<p><strong>新文件</strong>:</p>
+<pre><code>lib/
+├── db/
+│   ├── client.ts                 SQLite 单例 + migrations
+│   ├── schema.sql                建表 DDL
+│   └── queries/
+│       ├── cost.ts               daily_cost upsert / read 查询
+│       └── alerts.ts             alert_state / alert_history 查询
+│
+├── alerts/
+│   ├── engine.ts                 评估 + state transition
+│   ├── rules.ts                  yaml load + 解析
+│   ├── condition.ts              op 解析(&gt;, &lt;, in, wow_drop 等)
+│   ├── extract.ts                metric path → value 提取(支持 health.apiSla.errorRate24h / health.deploy[*].status)
+│   └── notify.ts                 webhook push client
+│
+app/api/
+├── ingest/
+│   └── cost/route.ts             POST,Bearer 守门
+└── cost/route.ts                 GET,读 SQLite
+
+components/
+├── tabs/cost-tab.tsx             新 Tab
+├── cards/cost-{ai-gateway,exa,railway,apollo}.tsx
+└── cost-trend-chart.tsx          stacked area 30d
+</code></pre>
+<p>新增约 12 个文件,<strong>对 v1 现有 17 卡片 0 影响</strong>(共享 layout / page,新增 1 个 Tab 入口而已)。</p>
+
+</div>
+</body>
+</html>
