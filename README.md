@@ -123,14 +123,74 @@ mira-monitor/
 
 改完 `docs/architecture.md` 跑 `bun run build:docs` 重新生成 HTML。
 
-## 部署 TODO
+## 部署到 Railway
 
-当前是本地 dev 形态,**未部署**。上线前要:
+通过 **GitHub Actions 手动触发** 把镜像推到 Railway。流程:
 
-- [ ] 加回认证(Basic Auth middleware 或 SSO,删除 dev 阶段的无认证状态)
-- [ ] 写 `Dockerfile` + `railway.toml`(参考 mira-work 主仓 railway.toml)
-- [ ] Railway 部署 + 挂 secret 到 env(不要进 Git)
-- [ ] v2 SQLite 落地时挂 persistent volume
+```
+本地 push → GitHub → Actions 页面手点 "Run workflow" → typecheck + build → railway up
+```
+
+构建走根目录的 `Dockerfile`(Next.js standalone),健康检查 `/api/health`,Basic Auth middleware 拦截所有非 health 请求。
+
+### 部署结构
+
+monitor 走独立 Railway project,跟 mira 主站完全隔离(费用/权限/故障互不影响):
+
+```
+mira-monitor (Railway project)
+└── production (默认环境)
+    └── mira-monitor (service)
+```
+
+### 一次性配置
+
+1. **在 Railway 新建 project + service**
+
+   - Railway 控制台 → New Project → **Empty Project** → 命名 `mira-monitor`。新建后默认有一个 `production` 环境。
+   - 在 production 里 → New Service → **Empty Service** → 命名 `mira-monitor`(跟 workflow 里默认输入对得上)。
+   - 暂时**不要**接 GitHub repo,我们用 GH Actions 主动推、不用 Railway 自带的 GitHub 自动构建。
+
+2. **拿 Railway Project Token**
+
+   Railway → mira-monitor 项目 → Settings → Tokens → New Project Token → Environment 选 `production` → 复制。
+
+   Project Token 锁死在这个 project + 环境,泄漏只影响 monitor,不会牵扯 mira 主站。
+
+3. **在 GitHub 仓库配 Secret**(Settings → Secrets and variables → Actions)
+
+   | Secret 名 | 值 | 用途 |
+   | --- | --- | --- |
+   | `RAILWAY_DEPLOY_TOKEN` | 上一步的 Project Token | GH Action 用 `railway up` 推镜像 |
+
+   > 业务 env(`POSTHOG_PERSONAL_API_KEY` / `LANGFUSE_*` / `SENTRY_*` / `DASHBOARD_BASIC_AUTH_PASS` 等)**不放 GH Secrets**,直接配到 Railway 服务的 Variables。完整清单见 [`.env.example`](.env.example)。
+
+4. **在 Railway service 里配 Variables**
+
+   mira-monitor service → Variables → 把 `.env.example` 里所有变量贴进来。重点:
+
+   - `DASHBOARD_BASIC_AUTH_PASS` **必填**(没配 middleware 会拒所有请求,避免误把无认证 dashboard 上线)。
+   - `RAILWAY_TOKEN` / `RAILWAY_PROJECT_ID` / `RAILWAY_ENVIRONMENT_ID` 是 dashboard 自己拉部署状态用的,**指向哪个 project 就填哪个**——通常你想看的是 mira 主站的部署,所以填 mira 主站的 project/env id,token 用账号级或 mira 主站的 readonly token。
+   - 端口不用配,Railway 自动注入 `$PORT`,Next.js standalone 已经读它。
+
+### 触发部署
+
+GitHub → Actions → **Deploy to Railway** → Run workflow → 输入 service 名(可留空) → 跑。
+
+verify job 跑 `npm run typecheck` + `npm run build` 守闸,绿了 deploy job 才 `railway up`。
+
+### 本地手动部署(应急用)
+
+```bash
+npm i -g @railway/cli
+railway login
+railway link               # 选项目和环境
+railway up                 # 用本地 Dockerfile 构建并推
+```
+
+### v2 持久化
+
+SQLite 落地时去 Railway 给 service 加 Volume,挂到 `/data` 之类的路径,数据库文件写那里。
 
 ## 已知坑 / 后续优化
 

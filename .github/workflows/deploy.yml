@@ -1,0 +1,61 @@
+name: Deploy to Railway
+
+# 只手动触发：Actions 页面 → Deploy to Railway → Run workflow
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Railway service name（留空则用 token 默认 service）"
+        required: false
+        type: string
+
+concurrency:
+  group: railway-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Typecheck & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          # build 阶段不需要真 secret，给占位让 env.ts 不报错即可
+          DASHBOARD_BASIC_AUTH_PASS: "ci-placeholder"
+
+  deploy:
+    name: Railway up
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.com/install.sh | sh
+          echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_DEPLOY_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.service }}" ]; then
+            railway up --service "${{ inputs.service }}" --ci
+          else
+            railway up --ci
+          fi
