@@ -1,0 +1,14 @@
+# Railway 部署配置
+# 文档：https://docs.railway.com/reference/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Next.js 起来后这个端点就能返 200，Railway 用它判断 deploy 是否成功
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+# Railway 自动给 $PORT，Dockerfile 默认 3000；server.js 读 $PORT，不写死
