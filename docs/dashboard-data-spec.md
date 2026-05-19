@@ -9,7 +9,7 @@
 | PostHog    | `Authorization: Bearer phx_...`                  | `https://us.posthog.com`                   | `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_HOST`                      |
 | Langfuse   | `Authorization: Basic base64(pub:sec)`           | `https://cloud.langfuse.com`               | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`   |
 | Sentry     | `Authorization: Bearer ...`                      | `https://sentry.io`                        | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`             |
-| Railway    | `Project-Access-Token: <uuid>` (注意不是 Bearer) | `https://backboard.railway.app/graphql/v2` | `RAILWAY_TOKEN`, `RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_ID` |
+| Railway    | `Project-Access-Token: <uuid>` (注意不是 Bearer) | `https://backboard.railway.app/graphql/v2` | `RAILWAY_DATASOURCE_TOKEN`, `RAILWAY_DATASOURCE_PROJECT_ID`, `RAILWAY_DATASOURCE_ENVIRONMENT_ID` |
 | Statuspage | 无认证                                           | 各家 `*/api/v2/status.json`                | —                                                               |
 | Ping       | 无认证                                           | `MIRA_HEALTH_URL` env                      | —                                                               |
 

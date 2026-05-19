@@ -51,7 +51,7 @@ open http://localhost:3000
 | `POSTHOG_PERSONAL_API_KEY`                                        | 业务指标                  | PostHog → Account Settings → Personal API Keys(scope: Performing analytics queries) |
 | `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` + `LANGFUSE_HOST`   | LLM 用量                  | Langfuse 项目 → Settings → API Keys                                                 |
 | `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT`             | 错误率 / SLA / Web Vitals | Sentry → Account Settings → Auth Tokens(注意是 User Auth)                           |
-| `RAILWAY_TOKEN` + `RAILWAY_PROJECT_ID` + `RAILWAY_ENVIRONMENT_ID` | 部署状态                  | Railway → Project Settings → Tokens                                                 |
+| `RAILWAY_DATASOURCE_TOKEN` + `RAILWAY_DATASOURCE_PROJECT_ID` + `RAILWAY_DATASOURCE_ENVIRONMENT_ID` | 部署状态                  | Railway → Project Settings → Tokens                                                 |
 | `MIRA_HEALTH_URL`                                                 | 心跳目标                  | 默认 `https://mira.day/api/health`                                                  |
 
 ## 命令
@@ -170,7 +170,7 @@ mira-monitor (Railway project)
    mira-monitor service → Variables → 把 `.env.example` 里所有变量贴进来。重点:
 
    - `DASHBOARD_BASIC_AUTH_PASS` **必填**(没配 middleware 会拒所有请求,避免误把无认证 dashboard 上线)。
-   - `RAILWAY_TOKEN` / `RAILWAY_PROJECT_ID` / `RAILWAY_ENVIRONMENT_ID` 是 dashboard 自己拉部署状态用的,**指向哪个 project 就填哪个**——通常你想看的是 mira 主站的部署,所以填 mira 主站的 project/env id,token 用账号级或 mira 主站的 readonly token。
+   - `RAILWAY_DATASOURCE_TOKEN` / `RAILWAY_DATASOURCE_PROJECT_ID` / `RAILWAY_DATASOURCE_ENVIRONMENT_ID` 是 dashboard 自己拉部署状态用的,**指向哪个 project 就填哪个**——通常你想看的是 mira 主站的部署,所以填 mira 主站的 project/env id,token 用账号级或 mira 主站的 readonly token。带 `_DATASOURCE_` 前缀是为了避开 Railway 平台自动注入的同名 `RAILWAY_PROJECT_ID` / `RAILWAY_ENVIRONMENT_ID`(那俩指向本服务自己所在的 project,跟数据源含义冲突)。
    - 端口不用配,Railway 自动注入 `$PORT`,Next.js standalone 已经读它。
 
 ### 触发部署

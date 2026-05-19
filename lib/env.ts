@@ -25,9 +25,10 @@ export const env = {
     project: read("SENTRY_PROJECT"),
   },
   railway: {
-    token: read("RAILWAY_TOKEN"),
-    projectId: read("RAILWAY_PROJECT_ID"),
-    environmentId: read("RAILWAY_ENVIRONMENT_ID"),
+    // 用 _DATASOURCE_ 前缀避免与 Railway 平台自动注入的 RAILWAY_PROJECT_ID / RAILWAY_ENVIRONMENT_ID 撞名
+    token: read("RAILWAY_DATASOURCE_TOKEN"),
+    projectId: read("RAILWAY_DATASOURCE_PROJECT_ID"),
+    environmentId: read("RAILWAY_DATASOURCE_ENVIRONMENT_ID"),
   },
   ping: {
     healthUrl: read("MIRA_HEALTH_URL") ?? "https://mira.day/api/health",
