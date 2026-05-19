@@ -72,7 +72,20 @@ const authHeader = (): string => {
   return `Basic ${btoa(`${publicKey}:${secretKey}`)}`;
 };
 
+// ─── 进程级内存缓存 ─────────────────────────────────────────────
+// Langfuse 免费档 rate limit 容易撞（每次 /api/metrics 触发 3 个请求 ×
+// 多人同时刷 dashboard）。加 60s TTL 缓存：同一 path 60s 内只打一次 Langfuse。
+// 失败不缓存（429 / 5xx 等错误下次仍会重试），rate limit 自然恢复后即可重新拉取。
+// 注：单 Node 进程共享；Railway 多副本场景需要换成 Redis（当前单副本不用考虑）。
+const LANGFUSE_CACHE_TTL_MS = 60_000;
+const langfuseCache = new Map<string, { value: unknown; expiresAt: number }>();
+
 const fetchLangfuse = async <T>(path: string, timeoutMs = 12_000): Promise<T> => {
+  const cached = langfuseCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value as T;
+  }
+
   const { host } = env.langfuse;
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -88,7 +101,12 @@ const fetchLangfuse = async <T>(path: string, timeoutMs = 12_000): Promise<T> =>
         const body = await res.text().catch(() => "");
         throw new Error(`Langfuse ${res.status}: ${body.slice(0, 200)}`);
       }
-      return (await res.json()) as T;
+      const data = (await res.json()) as T;
+      langfuseCache.set(path, {
+        value: data,
+        expiresAt: Date.now() + LANGFUSE_CACHE_TTL_MS,
+      });
+      return data;
     } catch (err) {
       lastError = err;
       if (attempt === 0) await new Promise((r) => setTimeout(r, 600));
