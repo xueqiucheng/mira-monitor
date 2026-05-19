@@ -167,7 +167,7 @@ blockquote {
 </head>
 <body>
 <div class="container">
-<div class="doc-meta">source: docs/architecture.md · 生成时间: 2026-05-15T03:19:18.686Z</div>
+<div class="doc-meta">source: docs/architecture.md · 生成时间: 2026-05-19T06:36:12.260Z</div>
 <h1>Mira Monitor 架构</h1>
 <p>Mira 海外版的全局监控大屏。</p>
 <p><strong>v1 当前状态(本文 1-10 节)</strong>:2 tab(基础服务健康度 / 业务看板)、17 卡片,统一在 <code>/api/metrics</code> 一个端点聚合 6 个数据源 → 前端 10s 轮询渲染。<strong>无状态、不落地。</strong></p>
@@ -405,7 +405,7 @@ errorRate1h = errors_1h_bucket / transactions_1h
 <p><strong>已知数据缺口</strong>:</p>
 <ul>
 <li>Mira Langfuse trace 没标 <code>status=success/failed</code> → 任务成功率/LLM provider 错误率无法直接算,后两个卡片走 mock</li>
-<li>部分模型名重复(<code>claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4.6</code>)未规整,后两个 cost 算 $0(Langfuse 价格表按 model id 精确匹配)</li>
+<li><del>部分模型名重复(<code>claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4.6</code>)未规整,后两个 cost 算 $0(Langfuse 价格表按 model id 精确匹配)</del> → 已在 <code>lib/sources/langfuse.ts</code> 加 <code>MODEL_ALIASES</code> 把变体合并到 canonical 名 + <code>FALLBACK_PRICES</code> 在 Langfuse 返 $0 时按 Anthropic 官方单价回算;<strong>仍需主站统一命名才算彻底闭环</strong></li>
 </ul>
 <hr>
 <h3>4.3 PostHog(<code>lib/sources/posthog.ts</code>)</h3>
@@ -755,8 +755,8 @@ open http://localhost:3001
 </tr>
 <tr>
 <td>Mira 内 LLM model 命名不一致</td>
-<td>待规整 mira-work</td>
-<td><code>claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4.6</code> 三种写法并存,后两种 Langfuse 价格表算 $0</td>
+<td>mira-monitor 已加 alias + 兜底单价(<code>lib/sources/langfuse.ts</code>);彻底闭环仍需 mira-work 统一命名</td>
+<td><code>claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4-6</code> / <code>anthropic/claude-sonnet-4.6</code> 三种写法并存,后两种 Langfuse 价格表算 $0(已被 mira-monitor 的 <code>MODEL_ALIASES</code> + <code>FALLBACK_PRICES</code> 修复)</td>
 </tr>
 <tr>
 <td>Sentry 采样率 50%</td>

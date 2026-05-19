@@ -198,7 +198,7 @@ errorRate1h = errors_1h_bucket / transactions_1h
 
 **已知数据缺口**:
 - Mira Langfuse trace 没标 `status=success/failed` → 任务成功率/LLM provider 错误率无法直接算,后两个卡片走 mock
-- 部分模型名重复(`claude-sonnet-4-6` / `anthropic/claude-sonnet-4-6` / `anthropic/claude-sonnet-4.6`)未规整,后两个 cost 算 $0(Langfuse 价格表按 model id 精确匹配)
+- ~~部分模型名重复(`claude-sonnet-4-6` / `anthropic/claude-sonnet-4-6` / `anthropic/claude-sonnet-4.6`)未规整,后两个 cost 算 $0(Langfuse 价格表按 model id 精确匹配)~~ → 已在 `lib/sources/langfuse.ts` 加 `MODEL_ALIASES` 把变体合并到 canonical 名 + `FALLBACK_PRICES` 在 Langfuse 返 $0 时按 Anthropic 官方单价回算;**仍需主站统一命名才算彻底闭环**
 
 ---
 
@@ -467,7 +467,7 @@ lsof -ti :3001 | xargs kill && ./node_modules/.bin/next dev --port 3001
 | Langfuse trace 没标 `status` 字段 | 待补 mira-work | 任务成功率 / LLM provider 错误率算不准 |
 | Sentry 沙箱错误没 `component=sandbox` tag | 待补 mira-work | 沙箱卡片只能 mock |
 | OpenAI statuspage 返空响应 | 待 OpenAI 修(或换 URL) | 该灯一直 unknown |
-| Mira 内 LLM model 命名不一致 | 待规整 mira-work | `claude-sonnet-4-6` / `anthropic/claude-sonnet-4-6` / `anthropic/claude-sonnet-4.6` 三种写法并存,后两种 Langfuse 价格表算 $0 |
+| Mira 内 LLM model 命名不一致 | mira-monitor 已加 alias + 兜底单价(`lib/sources/langfuse.ts`);彻底闭环仍需 mira-work 统一命名 | `claude-sonnet-4-6` / `anthropic/claude-sonnet-4-6` / `anthropic/claude-sonnet-4.6` 三种写法并存,后两种 Langfuse 价格表算 $0(已被 mira-monitor 的 `MODEL_ALIASES` + `FALLBACK_PRICES` 修复) |
 | Sentry 采样率 50% | 设计选择 | P95/P99 数字有偏差,卡片下显示 sampling note |
 | PostHog Funnels / Retention | 待接 | 漏斗 + 留存卡片当前 mock |
 | API P99 包含 SSE 长连接 | 待加 filter | `/api/task` 类 streaming transaction 算到 P99 里,数字偏高;可以 `&query=!transaction:/api/task/*` 排除 |

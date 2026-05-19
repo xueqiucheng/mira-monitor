@@ -200,7 +200,7 @@ SQLite 落地时去 Railway 给 service 加 Volume,挂到 `/data` 之类的路�
 - Langfuse trace 没标 `status` → 任务成功率算不准,LLM provider 错误率走 mock
 - Sentry 沙箱错误缺 `component=sandbox` tag → 沙箱卡片 mock
 - OpenAI statuspage 端点返空响应 → OpenAI 灯一直 `unknown`
-- Mira 内 LLM 模型命名不一致(`claude-sonnet-4-6` / `anthropic/claude-sonnet-4-6` / `anthropic/claude-sonnet-4.6`)→ Langfuse 价格表对后两种算 $0
+- ~~Mira 内 LLM 模型命名不一致(`claude-sonnet-4-6` / `anthropic/claude-sonnet-4-6` / `anthropic/claude-sonnet-4.6`)→ Langfuse 价格表对后两种算 $0~~ → `lib/sources/langfuse.ts` 已加 `MODEL_ALIASES` 规范化 + `FALLBACK_PRICES` 兜底重算（Sonnet 4.6 / Haiku 4.5 按 Anthropic 官方单价）；主站命名彻底统一后这段可拆
 - Sentry 采样率 50% → P95/P99 数字有偏差(卡片下有 sampling note 提示)
 - API P99 含 `/api/task` 类 SSE 长连接 → 数字偏高,可加 `query=!transaction:/api/task/*` 排除
 - PostHog Funnels / Retention 接口未接,漏斗 + 留存卡片当前 mock
