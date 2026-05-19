@@ -5,9 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       service:
-        description: "Railway service name（留空则用 token 默认 service）"
+        description: "Railway service name"
         required: false
         type: string
+        default: "mira-monitor"
 
 concurrency:
   group: railway-deploy
