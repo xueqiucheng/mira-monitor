@@ -47,7 +47,8 @@ jobs:
 
       - name: Install Railway CLI
         run: |
-          curl -fsSL https://railway.com/install.sh | sh
+          # install.sh 里有 bash-only 语法（${var,,} 之类），dash 会在第 141 行报 Bad substitution，所以显式用 bash 不能 sh
+          curl -fsSL https://railway.com/install.sh | bash
           echo "$HOME/.railway/bin" >> "$GITHUB_PATH"
 
       - name: Deploy
