@@ -1,6 +1,40 @@
 import type { LlmMetrics, ModelUsage, ToolUsage } from "../types";
 import { env } from "../env";
 
+// ─── 模型命名规范化 ────────────────────────────────────────────────
+// mira 主站里 LLM 调用混用了 3 种命名（dash / dot / 带前缀），Langfuse 价格表
+// 只认其中一部分，剩下的 totalCost 返 0 导致 dashboard 总成本被低估。
+// 这里在客户端把变体规范成 canonical 名 + 兜底重算成本。
+// 长期方案：主站统一命名后这里可以拆掉。
+const MODEL_ALIASES: Record<string, string> = {
+  "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
+  "anthropic/claude-sonnet-4-6": "claude-sonnet-4-6",
+  "anthropic/claude-haiku-4.5": "claude-haiku-4-5",
+  "anthropic/claude-haiku-4-5": "claude-haiku-4-5",
+};
+
+const normalizeModel = (m: string): string => MODEL_ALIASES[m] ?? m;
+
+// 兜底价格（USD per token）——仅当 Langfuse 返回 totalCost=0 但 token>0 时用
+// 来源：Anthropic 官方定价（如有变动同步更新）
+//   Claude Sonnet 4.6 : input $3 / output $15 per 1M tokens
+//   Claude Haiku  4.5 : input $1 / output $5  per 1M tokens
+// 不含 cached input / prompt caching 优惠，估算值偏高一点是预期。
+const FALLBACK_PRICES: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-4-6": { input: 3 / 1_000_000, output: 15 / 1_000_000 },
+  "claude-haiku-4-5": { input: 1 / 1_000_000, output: 5 / 1_000_000 },
+};
+
+const computeFallbackCost = (
+  canonicalModel: string,
+  inputTokens: number,
+  outputTokens: number,
+): number => {
+  const p = FALLBACK_PRICES[canonicalModel];
+  if (!p) return 0;
+  return inputTokens * p.input + outputTokens * p.output;
+};
+
 interface DailyUsageRow {
   model: string | null;
   inputUsage: number;
@@ -94,19 +128,25 @@ export const fetchLlmMetrics = async (): Promise<LlmMetrics> => {
     totalTraces += row.countTraces;
     for (const u of row.usage) {
       if (!u.model) continue;
+      const canonical = normalizeModel(u.model);
+      // Langfuse 返 0 但 token > 0 → 价格表缺这个 model 名，按 canonical 名兜底重算
+      const cost =
+        u.totalCost > 0
+          ? u.totalCost
+          : computeFallbackCost(canonical, u.inputUsage, u.outputUsage);
       totalTokens += u.totalUsage;
-      totalCost += u.totalCost;
-      const existing = modelMap.get(u.model);
+      totalCost += cost;
+      const existing = modelMap.get(canonical);
       if (existing) {
         existing.taskCount += u.countTraces;
         existing.totalTokens += u.totalUsage;
-        existing.totalCost += u.totalCost;
+        existing.totalCost += cost;
       } else {
-        modelMap.set(u.model, {
-          model: u.model,
+        modelMap.set(canonical, {
+          model: canonical,
           taskCount: u.countTraces,
           totalTokens: u.totalUsage,
-          totalCost: u.totalCost,
+          totalCost: cost,
         });
       }
     }
