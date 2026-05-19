@@ -9,8 +9,8 @@ export const formatNumber = (
   }).format(n);
 };
 
-export const formatPercent = (rate: number, digits = 2): string => {
-  if (!Number.isFinite(rate)) return "—";
+export const formatPercent = (rate: number | null | undefined, digits = 2): string => {
+  if (rate == null || !Number.isFinite(rate)) return "—";
   return `${(rate * 100).toFixed(digits)}%`;
 };
 

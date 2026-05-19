@@ -110,8 +110,10 @@ export const fetchApiSla = async (): Promise<ApiSlaMetrics> => {
   const p99 = Number(tx24hRow["p99(transaction.duration)"] ?? NaN);
 
   return {
-    errorRate1h: tx1h > 0 ? errors1h / tx1h : 0,
-    errorRate24h: tx24h > 0 ? errors24h / tx24h : 0,
+    // 分母为 0（24h 内没有 transaction，通常意味着主站 Sentry Performance Monitoring 没开）
+    // 时返 null 让前端显 "—"，避免误以为是真的 0% 错误率
+    errorRate1h: tx1h > 0 ? errors1h / tx1h : null,
+    errorRate24h: tx24h > 0 ? errors24h / tx24h : null,
     p95LatencyMs: Number.isFinite(p95) && p95 > 0 ? p95 : null,
     p99LatencyMs: Number.isFinite(p99) && p99 > 0 ? p99 : null,
     trend,

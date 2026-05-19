@@ -46,8 +46,8 @@ export interface PingResult {
 }
 
 export interface ApiSlaMetrics {
-  errorRate1h: number;
-  errorRate24h: number;
+  errorRate1h: number | null;
+  errorRate24h: number | null;
   p95LatencyMs: number | null;
   p99LatencyMs: number | null;
   trend: TimeSeriesPoint[];
