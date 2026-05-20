@@ -5,8 +5,11 @@ import { formatCostUsd, formatNumber } from "@/lib/format";
 export const ApolloCostCard = ({ data, source }: { data: ApolloCost; source: SourceStatus }) => (
   <CardShell title="Apollo (今日)" source={{ name: "Ingest", status: source }}>
     <div className="flex items-baseline justify-between">
-      <p className="text-3xl font-semibold tabular-nums">{formatCostUsd(data.estimated_cost_usd)}</p>
-      <p className="text-xs text-muted-foreground">estimated</p>
+      <p className="text-3xl font-semibold tabular-nums">
+        <span className="mr-2 text-base font-normal text-muted-foreground">预估</span>
+        {formatCostUsd(data.estimated_cost_usd)}
+      </p>
+      <p className="text-xs text-muted-foreground">$0.5 / call</p>
     </div>
     <ul className="mt-3 space-y-1.5">
       {data.endpoints.map((e) => (
