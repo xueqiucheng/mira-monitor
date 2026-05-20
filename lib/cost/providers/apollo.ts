@@ -1,7 +1,7 @@
 // Apollo: POST /v1/usage_stats/api_usage_stats
-// 返回每个 endpoint 的 day/hour/minute consumed 计数,不返金额
-// estimatedCostUsd 字段先留 null,后续按 plan 拆账时可补
-// 借鉴自 reference repo apps/mira-monitor/src/providers/apollo/client.ts
+// 返回每个 endpoint 的 day/hour/minute consumed 计数,**Apollo API 本身不返金额**
+// 金额按 reference repo (apps/mira-monitor/src/reports/daily-usage-format.ts:78) 的
+// flat-rate 估算:$0.5 / call,跟实际 Apollo plan 不一定吻合,作为 dashboard 粗估
 
 import { env } from "../../env";
 import { fetchWithRetry } from "../fetch-with-retry";
@@ -26,8 +26,13 @@ interface UsageStatsEntry {
 
 type ApolloUsageStatsResponse = Record<string, UsageStatsEntry>;
 
+// Apollo flat-rate 估算系数:每次 endpoint 调用预估 $0.5
+// 来源:reference repo daily-usage-format.ts:78,用 totalCalls * 0.5 算估值
+// 如果以后拿到 Apollo plan 实际单价,改这里就行
+const APOLLO_USD_PER_CALL = 0.5;
+
 export interface ApolloDailyCollected {
-  estimatedCostUsd: number | null;
+  estimatedCostUsd: number;
   endpoints: { endpoint_key: string; consumed: number }[];
 }
 
@@ -60,5 +65,6 @@ export const fetchApolloDaily = async (): Promise<ApolloDailyCollected> => {
     consumed: Number(indexed.get(`${def.apiPath}|${def.method}`)?.day?.consumed ?? 0),
   }));
 
-  return { estimatedCostUsd: null, endpoints };
+  const totalCalls = endpoints.reduce((acc, e) => acc + e.consumed, 0);
+  return { estimatedCostUsd: totalCalls * APOLLO_USD_PER_CALL, endpoints };
 };

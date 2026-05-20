@@ -1,5 +1,6 @@
 // POST /api/ingest/cost
-// 由 Railway sibling cron service 每日 0:30 北京时间触发
+// 由 Railway sibling cron service 北京 8:00-23:30 每 30 分钟触发(一天 32 次)
+// 同日多次跑会通过 UPSERT 覆盖同 beijing_date 的快照,所以高频刷新没问题
 // Auth: Authorization: Bearer $COST_INGEST_TOKEN
 // 可选 query ?date=YYYY-MM-DD 回填指定日期
 

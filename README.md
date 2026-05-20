@@ -7,7 +7,7 @@ Mira 海外版的全局监控大屏。3 个 Tab(基础服务健康度 · 业务�
 - **v1 已完成**:17 个实时卡片 + Cost Tab 5 卡片
   - Health Tab(8 卡片):上游 SaaS 状态 / 部署 / 心跳 / API SLA / Web Vitals / Crash-free / LLM Provider / 沙箱
   - Business Tab(9 卡片):DAU/MAU / 新增用户 / 漏斗 / 留存 / 任务 / 消息 / Token & 成本 / 工具调用 / 平均任务成本
-  - Cost Tab(5 卡片):AI Gateway / Exa / Railway / Apollo / 30d 趋势(由 Railway sibling cron service 每日 ingest 落 Postgres,4 张 `cost_*_daily` 表)
+  - Cost Tab(5 卡片):AI Gateway / Exa / Railway / Apollo / 30d 趋势(由 Railway sibling cron service 每 30 分钟 ingest 一次落 Postgres,4 张 `cost_*_daily` 表)
 - **告警引擎 + webhook 推送**:规划中未实施。详见 [架构文档 §11](docs/architecture.md#11-v2-路线图cost-面板--告警规划中未实施)。
 
 ## 数据源现状
@@ -20,7 +20,7 @@ Mira 海外版的全局监控大屏。3 个 Tab(基础服务健康度 · 业务�
 | Sentry SaaS       | ✅ 真数据 | API 错误率 / P95 P99 / Web Vitals / Crash-free   |
 | Langfuse Cloud    | ✅ 真数据 | LLM token / cost / 模型分布 / 工具调用           |
 | PostHog Cloud     | ✅ 真数据 | DAU/MAU / 新增 / 任务 / 消息                     |
-| Cost ingest      | ✅ 真数据 | AI Gateway / Exa / Railway / Apollo 每日 ingest → Postgres |
+| Cost ingest      | ✅ 真数据 | AI Gateway / Exa / Railway / Apollo 每 30 分钟 ingest → Postgres |
 
 ## 快速开始
 
@@ -190,14 +190,14 @@ railway up                 # 用本地 Dockerfile 构建并推
 
 ## Cost ingest 部署(费用监控)
 
-Cost Tab 的数据由**每日 ingest** 落进 Postgres,web service 读 4 张 `cost_*_daily` 表渲染。需要在同一个 Railway project 里加两样东西:**一个 Postgres + 一个 sibling cron service**。
+Cost Tab 的数据由 cron sibling service **每 30 分钟 ingest 一次**(北京时间 8:00 - 23:30 营业时段,白天日内多次刷新)落进 Postgres,web service 读 4 张 `cost_*_daily` 表渲染。需要在同一个 Railway project 里加两样东西:**一个 Postgres + 一个 sibling cron service**。
 
 ```
 mira-monitor (Railway project)
 └── production
     ├── Postgres                    ← 同 project 新建,DATABASE_URL 自动注入 web service
     ├── mira-monitor (web)          ← 现有,Next.js 常驻,渲染 Cost Tab + 暴露 /api/ingest/cost
-    └── mira-monitor-cron (new)     ← 新增,每天 0:30 北京时间触发 ingest
+    └── mira-monitor-cron (new)     ← 新增,北京 8:00-23:30 每 30 分钟触发 ingest
 ```
 
 ### 1. 加 Postgres
@@ -243,22 +243,19 @@ Railway provider 不用新加 token:[`RAILWAY_DATASOURCE_TOKEN`](#) 已经存在
 
 Railway → project → **+ New → Empty Service** → 命名 `mira-monitor-cron`。然后:
 
-1. **Source**:不接 GitHub,**用同一个镜像跟 web service 共享**。最简单的做法:
-   - Settings → Source → 选 mira-monitor (web) 那个 service 的 image(或者另开一个 docker 镜像 `curlimages/curl:latest`,更小)
-   - 推荐 `curlimages/curl:latest`——这服务只需要发一个 HTTP POST,5MB 镜像够了
-2. **Start Command** 覆盖成:
+1. **Source / Image**:用 Docker Hub 上的 **`alpine/curl:latest`**(~10MB,自带 curl + sh)
+   - ⚠️ **不要用 `curlimages/curl:latest`**——它的 `ENTRYPOINT` 锁死成 `curl`,Railway 的 Start Command 不经过 shell,`$VAR` 不展开,curl 会拿到字面字符串 `"$INGEST_URL"` 报 `Bad hostname`
+2. **Start Command** 覆盖成(注意外层用 `sh -c '...'` 包裹,内部环境变量才能展开):
    ```bash
-   curl -fsS -X POST \
-     -H "Authorization: Bearer $COST_INGEST_TOKEN" \
-     "$INGEST_URL"
+   sh -c 'curl -fsS -X POST -H "Authorization: Bearer $COST_INGEST_TOKEN" "$INGEST_URL"'
    ```
 3. **Variables**:
    - `COST_INGEST_TOKEN` — Reference web service 同名变量(保持一致)
    - `INGEST_URL` — `https://<web-service-domain>/api/ingest/cost`(用 Railway 给 web service 自动生成的内部域名)
-4. **Settings → Cron Schedule**:`30 16 * * *`(UTC,即北京时间 0:30)
+4. **Settings → Cron Schedule**:`*/30 0-15 * * *`(UTC,即北京时间 8:00 - 23:30 每 30 分钟一次,一天 32 次。Railway cron 用 UTC,8 北京 = 0 UTC,23:30 北京 = 15:30 UTC)
 5. **Settings → Restart Policy**:Never(cron 模式下跑完就退,不要自动拉起)
 
-这样配完,**Railway 每天 0:30 启动 cron service → curl 打 web service → web service 跑 4 个 provider 拉数据 → UPSERT 进 Postgres → cron service 退出**。Web service 全程不重启,Cost Tab 下一次 10s 轮询就看到新数据。
+这样配完,**北京 8:00 起每 30 分钟 Railway 拉起 cron service → curl 打 web service → web service 跑 4 个 provider 拉数据 → UPSERT 进 Postgres → cron service 退出**。Web service 全程不重启,Cost Tab 下一次 10s 轮询就看到新数据。每次 ingest 5-15 秒,cron service 跑完就退,平时不占常驻资源。
 
 ### 4. 本地回填 / 调试
 

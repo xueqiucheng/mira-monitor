@@ -34,7 +34,7 @@ export const env = {
     healthUrl: read("MIRA_HEALTH_URL") ?? "https://mira.day/api/health",
   },
   // ─── Cost ingest ────────────────────────────────────────────
-  // 由 cron sibling service 每日 0:30 北京时间触发 ingest endpoint
+  // 由 cron sibling service 北京 8:00-23:30 每 30 分钟触发 ingest endpoint(一天 32 次)
   // ingest 落 4 张 Postgres 表(cost_*_daily),web service 渲染 Cost Tab 时读这些表
   cost: {
     aiGatewayKey: read("AI_GATEWAY_API_KEY"),
