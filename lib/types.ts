@@ -22,6 +22,10 @@ export interface UpstreamStatus {
   status: "operational" | "degraded" | "down" | "unknown";
   url: string;
   lastChecked: string;
+  /** 我们关注的子系统名字（substring 命中）。空数组 = 看总状态。仅供 UI tooltip 展示。 */
+  watchedComponents?: string[];
+  /** 当前命中且非 operational 的子系统列表。operational 时为空。 */
+  affectedComponents?: { name: string; status: string }[];
 }
 
 export interface DeployStatus {
