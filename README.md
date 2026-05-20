@@ -236,8 +236,13 @@ mira-monitor (web) service → Variables,补:
 | `AI_GATEWAY_API_KEY` | Vercel AI Gateway 的 API key |
 | `EXA_SERVICE_KEY` + `EXA_API_KEY_IDS` | Exa 服务 key + 监控的 API key id(逗号分隔) |
 | `APOLLO_MASTER_API_KEY` | Apollo Master API key |
+| `RAILWAY_BILLING_TOKEN` | **account-scoped** Railway token,用于查 `estimatedUsage`(费用)。Railway → Account Settings → Tokens → New Token。**不能复用** `RAILWAY_DATASOURCE_TOKEN`,后者是 Project Token,调 `estimatedUsage` 会返 `Not Authorized`(account-scoped query 不让 project token 调) |
 
-Railway provider 不用新加 token:[`RAILWAY_DATASOURCE_TOKEN`](#) 已经存在,ingest 复用同一个拉 `estimatedUsage` GraphQL。
+> 📌 **两个 Railway token 各管一摊**:
+> - `RAILWAY_DATASOURCE_TOKEN`(已有):Project Token,scope 在 mira 主站那一个 project,用于拉 Health Tab 的部署状态
+> - `RAILWAY_BILLING_TOKEN`(新增):Account/Team Token,跨 project 看用量,用于 Cost Tab 的 Railway 月预估
+>
+> 拆两个是为了泄漏 blast radius 最小化——billing token 权限更大,只用于 cost ingest 这一处。
 
 ### 3. 新增 sibling cron service
 

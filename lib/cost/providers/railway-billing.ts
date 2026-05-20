@@ -36,8 +36,10 @@ export interface RailwayDailyCollected {
 }
 
 export const fetchRailwayDaily = async (): Promise<RailwayDailyCollected> => {
-  const token = env.cost.railwayToken;
-  if (!token) throw new Error("RAILWAY_DATASOURCE_TOKEN not configured");
+  // estimatedUsage 是 account-scoped query,Project Token 调会返 "Not Authorized"。
+  // 优先用 RAILWAY_BILLING_TOKEN(personal/team token),fallback RAILWAY_DATASOURCE_TOKEN
+  const token = env.cost.railwayBillingToken ?? env.cost.railwayToken;
+  if (!token) throw new Error("RAILWAY_BILLING_TOKEN (or RAILWAY_DATASOURCE_TOKEN) not configured");
 
   const body = JSON.stringify({
     query:

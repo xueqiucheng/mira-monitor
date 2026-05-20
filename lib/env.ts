@@ -43,7 +43,10 @@ export const env = {
       .split(",")
       .map((s) => s.trim())
       .filter((s) => s.length > 0),
-    // 复用 datasource railway token(读账号级 GraphQL estimatedUsage,跟拉部署状态同 scope)
+    // Railway 计费查询需要 account-scoped token,Project Token 不行(estimatedUsage 报 Not Authorized)
+    // 优先用 RAILWAY_BILLING_TOKEN(在 Railway → Account Settings → Tokens 创建),
+    // fallback 到 RAILWAY_DATASOURCE_TOKEN(向后兼容,仅当 datasource token 本身是 account-scoped 时有用)
+    railwayBillingToken: read("RAILWAY_BILLING_TOKEN"),
     railwayToken: read("RAILWAY_DATASOURCE_TOKEN"),
     apolloKey: read("APOLLO_MASTER_API_KEY"),
     ingestToken: read("COST_INGEST_TOKEN"),
