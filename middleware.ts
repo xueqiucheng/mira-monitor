@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 // /api/health 必须放行，Railway 起 deploy 时拿它判断容器是否健康
-const PUBLIC_PATHS = ["/api/health"];
+// /api/ingest/cost 由 cron sibling service 调用，自带 Bearer token 鉴权，不走 Basic Auth
+const PUBLIC_PATHS = ["/api/health", "/api/ingest/cost"];
 
 // Edge runtime 用 Web Crypto 做常量时间比较，避免 timing attack
 const timingSafeEqual = (a: string, b: string): boolean => {

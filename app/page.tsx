@@ -67,7 +67,7 @@ const Page = () => {
         </TabsContent>
         <TabsContent value="cost" className="mt-6">
           {data ? (
-            <CostTab data={data.cost} />
+            <CostTab data={data.cost} sources={data.sources} />
           ) : (
             <div className="text-sm text-muted-foreground">loading…</div>
           )}

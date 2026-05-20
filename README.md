@@ -4,11 +4,11 @@ Mira 海外版的全局监控大屏。3 个 Tab(基础服务健康度 · 业务�
 
 ## 状态
 
-- **v1 已完成**:17 个实时卡片 + 5 个 mock 费用卡片
+- **v1 已完成**:17 个实时卡片 + Cost Tab 5 卡片
   - Health Tab(8 卡片):上游 SaaS 状态 / 部署 / 心跳 / API SLA / Web Vitals / Crash-free / LLM Provider / 沙箱
   - Business Tab(9 卡片):DAU/MAU / 新增用户 / 漏斗 / 留存 / 任务 / 消息 / Token & 成本 / 工具调用 / 平均任务成本
-  - Cost Tab(5 卡片,mock):AI Gateway / Exa / Railway / Apollo / 30d 趋势
-- **v2 规划中(未实施)**:Cost 数据 ingest 端点 + SQLite 持久化 + 告警引擎 + webhook 推送。详见 [架构文档 §11](docs/architecture.md#11-v2-路线图cost-面板--告警规划中未实施)。
+  - Cost Tab(5 卡片):AI Gateway / Exa / Railway / Apollo / 30d 趋势(由 Railway sibling cron service 每日 ingest 落 Postgres,4 张 `cost_*_daily` 表)
+- **告警引擎 + webhook 推送**:规划中未实施。详见 [架构文档 §11](docs/architecture.md#11-v2-路线图cost-面板--告警规划中未实施)。
 
 ## 数据源现状
 
@@ -20,7 +20,7 @@ Mira 海外版的全局监控大屏。3 个 Tab(基础服务健康度 · 业务�
 | Sentry SaaS       | ✅ 真数据 | API 错误率 / P95 P99 / Web Vitals / Crash-free   |
 | Langfuse Cloud    | ✅ 真数据 | LLM token / cost / 模型分布 / 工具调用           |
 | PostHog Cloud     | ✅ 真数据 | DAU/MAU / 新增 / 任务 / 消息                     |
-| Cost 推送端点     | ⚪ mock   | 等 v2 接入 `POST /api/ingest/cost`               |
+| Cost ingest      | ✅ 真数据 | AI Gateway / Exa / Railway / Apollo 每日 ingest → Postgres |
 
 ## 快速开始
 
@@ -188,9 +188,96 @@ railway link               # 选项目和环境
 railway up                 # 用本地 Dockerfile 构建并推
 ```
 
-### v2 持久化
+## Cost ingest 部署(费用监控)
 
-SQLite 落地时去 Railway 给 service 加 Volume,挂到 `/data` 之类的路径,数据库文件写那里。
+Cost Tab 的数据由**每日 ingest** 落进 Postgres,web service 读 4 张 `cost_*_daily` 表渲染。需要在同一个 Railway project 里加两样东西:**一个 Postgres + 一个 sibling cron service**。
+
+```
+mira-monitor (Railway project)
+└── production
+    ├── Postgres                    ← 同 project 新建,DATABASE_URL 自动注入 web service
+    ├── mira-monitor (web)          ← 现有,Next.js 常驻,渲染 Cost Tab + 暴露 /api/ingest/cost
+    └── mira-monitor-cron (new)     ← 新增,每天 0:30 北京时间触发 ingest
+```
+
+### 1. 加 Postgres
+
+Railway → mira-monitor project → **+ New → Database → PostgreSQL**。建好后到 mira-monitor web service 的 Variables 里 **Reference** 这个 DB 的 `DATABASE_URL`(Railway 会自动注入)。
+
+**表结构通过 migration 自动同步**——跟 mira 主站 (`apps/mira-work/lib/db/migrate.ts`) 同款模式:
+
+- migration 文件在 [lib/db/migrations/](lib/db/migrations/),`NNN_<name>.sql` 按文件名升序执行
+- `000_schema_migrations.sql` 是 bootstrap(建跟踪表),由 runner 引导
+- 每个 migration 包一个事务 + INSERT 进 `schema_migrations` 表;失败 ROLLBACK
+- 通过 `pg_advisory_lock` 防止 cron 跟 web 同时跑互相打架
+- `runMigrations()` 在 ingest 启动时 + web 服务首次读 Cost Tab 时各跑一次(module-level flag,每个进程只发一次 SQL)
+
+加新 migration:
+
+```bash
+# 1. 加文件
+echo "ALTER TABLE cost_ai_gateway_daily ADD COLUMN IF NOT EXISTS notes TEXT;" \
+  > lib/db/migrations/002_ai_gateway_notes.sql
+
+# 2. 本地验证(或线上让自动 runner 跑)
+bun run db:migrate
+```
+
+下次部署后,ingest 或 web 首次启动会自动应用新 migration。手动跑也行:`bun run db:migrate`。
+
+### 2. Web service 加新环境变量
+
+mira-monitor (web) service → Variables,补:
+
+| 变量 | 用途 |
+|---|---|
+| `DATABASE_URL` | Reference 上面那个 Postgres,Railway 自动填 |
+| `COST_INGEST_TOKEN` | 长一点的随机字符串(自己生成),`POST /api/ingest/cost` 用 `Authorization: Bearer` 校验它 |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway 的 API key |
+| `EXA_SERVICE_KEY` + `EXA_API_KEY_IDS` | Exa 服务 key + 监控的 API key id(逗号分隔) |
+| `APOLLO_MASTER_API_KEY` | Apollo Master API key |
+
+Railway provider 不用新加 token:[`RAILWAY_DATASOURCE_TOKEN`](#) 已经存在,ingest 复用同一个拉 `estimatedUsage` GraphQL。
+
+### 3. 新增 sibling cron service
+
+Railway → project → **+ New → Empty Service** → 命名 `mira-monitor-cron`。然后:
+
+1. **Source**:不接 GitHub,**用同一个镜像跟 web service 共享**。最简单的做法:
+   - Settings → Source → 选 mira-monitor (web) 那个 service 的 image(或者另开一个 docker 镜像 `curlimages/curl:latest`,更小)
+   - 推荐 `curlimages/curl:latest`——这服务只需要发一个 HTTP POST,5MB 镜像够了
+2. **Start Command** 覆盖成:
+   ```bash
+   curl -fsS -X POST \
+     -H "Authorization: Bearer $COST_INGEST_TOKEN" \
+     "$INGEST_URL"
+   ```
+3. **Variables**:
+   - `COST_INGEST_TOKEN` — Reference web service 同名变量(保持一致)
+   - `INGEST_URL` — `https://<web-service-domain>/api/ingest/cost`(用 Railway 给 web service 自动生成的内部域名)
+4. **Settings → Cron Schedule**:`30 16 * * *`(UTC,即北京时间 0:30)
+5. **Settings → Restart Policy**:Never(cron 模式下跑完就退,不要自动拉起)
+
+这样配完,**Railway 每天 0:30 启动 cron service → curl 打 web service → web service 跑 4 个 provider 拉数据 → UPSERT 进 Postgres → cron service 退出**。Web service 全程不重启,Cost Tab 下一次 10s 轮询就看到新数据。
+
+### 4. 本地回填 / 调试
+
+```bash
+# 用今日(北京时间)拉,UPSERT 进本地或远端 Postgres
+bun run ingest:cost
+
+# 回填某一天(注意 provider API 通常只支持近 90 天)
+bun run ingest:cost 2026-05-19
+
+# 或者用 curl 打线上 web service(快速验证 endpoint 通)
+curl -fsS -X POST \
+  -H "Authorization: Bearer $COST_INGEST_TOKEN" \
+  "https://<web-service-domain>/api/ingest/cost?date=2026-05-19"
+```
+
+### v2 持久化(已落地,本节备忘)
+
+Postgres 加上之后,Cost Tab 不再依赖 mock,30 天趋势从 `cost_*_daily` LEFT JOIN 出来。如果以后要做对账(Vercel AI Gateway 收的钱 vs mira `usage` 表实际入库的钱),按 reference 实现 (`/mnt/d/WorkSpace/crm-wsl-1/mira/apps/mira-monitor/src/reports/reconcile.ts`)再加一张 `reconcile_report` 表 + 一个只读 `MIRA_DATABASE_URL` 配置。
 
 ## 已知坑 / 后续优化
 

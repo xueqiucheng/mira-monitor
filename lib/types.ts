@@ -4,7 +4,8 @@ export type SourceName =
   | "sentry"
   | "railway"
   | "statuspage"
-  | "ping";
+  | "ping"
+  | "cost";
 
 export interface SourceStatus {
   ok: boolean;

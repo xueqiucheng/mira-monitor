@@ -33,6 +33,21 @@ export const env = {
   ping: {
     healthUrl: read("MIRA_HEALTH_URL") ?? "https://mira.day/api/health",
   },
+  // ─── Cost ingest ────────────────────────────────────────────
+  // 由 cron sibling service 每日 0:30 北京时间触发 ingest endpoint
+  // ingest 落 4 张 Postgres 表(cost_*_daily),web service 渲染 Cost Tab 时读这些表
+  cost: {
+    aiGatewayKey: read("AI_GATEWAY_API_KEY"),
+    exaServiceKey: read("EXA_SERVICE_KEY"),
+    exaApiKeyIds: (read("EXA_API_KEY_IDS") ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+    // 复用 datasource railway token(读账号级 GraphQL estimatedUsage,跟拉部署状态同 scope)
+    railwayToken: read("RAILWAY_DATASOURCE_TOKEN"),
+    apolloKey: read("APOLLO_MASTER_API_KEY"),
+    ingestToken: read("COST_INGEST_TOKEN"),
+  },
 };
 
 export const isConfigured = (source: SourceName): boolean => {
@@ -52,5 +67,8 @@ export const isConfigured = (source: SourceName): boolean => {
     case "statuspage":
     case "ping":
       return true;
+    case "cost":
+      // cost 走的是 lib/db/postgres.ts 的 isPostgresConfigured() 判断,这里只做兜底
+      return !!process.env.DATABASE_URL?.trim();
   }
 };

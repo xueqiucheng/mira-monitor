@@ -252,6 +252,7 @@ export const mockResponse = (): MetricsResponse => {
     railway: { ok: false, configured: false, message: "mock" },
     statuspage: { ok: false, configured: true, message: "mock" },
     ping: { ok: false, configured: true, message: "mock" },
+    cost: { ok: false, configured: false, message: "mock" },
   };
   return {
     generatedAt: new Date().toISOString(),

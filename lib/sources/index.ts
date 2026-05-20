@@ -1,5 +1,7 @@
 import type { MetricsResponse, SourceName, SourceStatus } from "../types";
 import { isConfigured } from "../env";
+import { isPostgresConfigured } from "../db/postgres";
+import { fetchCostTab } from "../cost/read";
 import { mockResponse } from "./mock";
 import { fetchPing } from "./ping";
 import { fetchStatuspages } from "./statuspage";
@@ -21,7 +23,7 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
   const baseline = mockResponse();
   const sources: Record<SourceName, SourceStatus> = baseline.sources;
 
-  const [pingR, upstreamR, deployR, growthR, usageR, llmR, slaR, vitalsR, crashFreeR] = await Promise.all([
+  const [pingR, upstreamR, deployR, growthR, usageR, llmR, slaR, vitalsR, crashFreeR, costR] = await Promise.all([
     settled(fetchPing()),
     settled(fetchStatuspages()),
     isConfigured("railway")
@@ -33,6 +35,7 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
     isConfigured("sentry") ? settled(fetchApiSla()) : Promise.resolve(null),
     isConfigured("sentry") ? settled(fetchWebVitals()) : Promise.resolve(null),
     isConfigured("sentry") ? settled(fetchCrashFree()) : Promise.resolve(null),
+    isPostgresConfigured() ? settled(fetchCostTab()) : Promise.resolve(null),
   ]);
 
   if (pingR.status === "fulfilled") {
@@ -107,6 +110,15 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
       configured: true,
       message: allOk ? undefined : firstErr?.status === "rejected" ? String(firstErr.reason) : "partial fetch failure",
     };
+  }
+
+  if (costR) {
+    if (costR.status === "fulfilled") {
+      baseline.cost = costR.value;
+      sources.cost = { ok: true, configured: true };
+    } else {
+      sources.cost = { ok: false, configured: true, message: String(costR.reason) };
+    }
   }
 
   return baseline;
