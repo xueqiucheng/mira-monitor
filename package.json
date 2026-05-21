@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "build:docs": "bun run scripts/build-architecture-html.ts",
     "db:migrate": "bun run scripts/db-migrate.ts",
-    "ingest:cost": "bun run scripts/ingest-cost.ts"
+    "ingest:cost": "bun run scripts/ingest-cost.ts",
+    "test:railway": "bun run scripts/test-railway.ts",
+    "test:railway-client": "bun run scripts/test-railway-client.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
