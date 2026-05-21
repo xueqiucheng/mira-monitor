@@ -18,7 +18,7 @@ interface ChartRow {
   AI: number;
   Exa: number;
   Railway: number;
-  Apollo: number;
+  "Apollo ⓘ": number;
 }
 
 export const CostTrendCard = ({
@@ -30,12 +30,13 @@ export const CostTrendCard = ({
   source: SourceStatus;
   className?: string;
 }) => {
+  // Apollo 数字是滚动 24h 的快照(详见 cost-apollo.tsx 注释),legend 标 ⓘ 提醒
   const chartData: ChartRow[] = data.trend30d.map((d) => ({
     date: d.date.slice(5),
     AI: d.ai_gateway,
     Exa: d.exa,
     Railway: d.railway,
-    Apollo: d.apollo,
+    "Apollo ⓘ": d.apollo,
   }));
   const total30d = data.trend30d.reduce(
     (s, d) => s + d.ai_gateway + d.exa + d.railway + d.apollo,
@@ -77,12 +78,15 @@ export const CostTrendCard = ({
             />
             <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} iconSize={10} />
             <Area type="monotone" dataKey="AI" stackId="1" stroke={COLORS.ai_gateway} fill={COLORS.ai_gateway} fillOpacity={0.5} isAnimationActive={false} />
-            <Area type="monotone" dataKey="Apollo" stackId="1" stroke={COLORS.apollo} fill={COLORS.apollo} fillOpacity={0.5} isAnimationActive={false} />
+            <Area type="monotone" dataKey="Apollo ⓘ" stackId="1" stroke={COLORS.apollo} fill={COLORS.apollo} fillOpacity={0.5} isAnimationActive={false} />
             <Area type="monotone" dataKey="Exa" stackId="1" stroke={COLORS.exa} fill={COLORS.exa} fillOpacity={0.5} isAnimationActive={false} />
             <Area type="monotone" dataKey="Railway" stackId="1" stroke={COLORS.railway} fill={COLORS.railway} fillOpacity={0.5} isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+        ⓘ Apollo 每日点是当日最后一次 ingest 拍下的"近 24h 滚动"快照,跟日历日有小偏差(Apollo API 限制,不返时间戳);其他 3 个 provider 是真实日历日
+      </p>
     </CardShell>
   );
 };
