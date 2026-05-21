@@ -179,8 +179,15 @@ export interface ExaCost {
   items: ExaLineItem[];
 }
 
+export interface RailwayProjectCost {
+  project_id: string;
+  name: string | null;       // 拉 project(id) 失败时为 null,UI fallback 显示 short id
+  cost_usd: number;
+}
+
 export interface RailwayCost {
   monthly_estimate_usd: number;
+  projects: RailwayProjectCost[];   // 按 cost desc 排好,UI top N 直接展示
 }
 
 export interface ApolloEndpoint {

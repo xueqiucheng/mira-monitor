@@ -232,7 +232,16 @@ const mockCost = (): CostTabData => ({
       { name: "Deep", cost_usd: 0.708, request_count: 59 },
     ],
   },
-  railway: { monthly_estimate_usd: 148.09 },
+  railway: {
+    monthly_estimate_usd: 148.09,
+    projects: [
+      { project_id: "d326ecde-b2f3-479e-938c-76ad07f1c9fe", name: "Mira", cost_usd: 114.52 },
+      { project_id: "00000000-0000-0000-0000-000000000001", name: "Voice", cost_usd: 8.75 },
+      { project_id: "00000000-0000-0000-0000-000000000002", name: "career-site", cost_usd: 6.91 },
+      { project_id: "00000000-0000-0000-0000-000000000003", name: "Mira Docs", cost_usd: 6.19 },
+      { project_id: "00000000-0000-0000-0000-000000000004", name: "miraMonitor", cost_usd: 0.15 },
+    ],
+  },
   apollo: {
     estimated_cost_usd: 86.0,
     endpoints: [

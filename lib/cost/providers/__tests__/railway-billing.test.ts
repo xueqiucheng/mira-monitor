@@ -95,30 +95,54 @@ describe("detectRailwayAuthMode", () => {
     expect(calls).toHaveLength(1);
   });
 
-  test("Account Token: project probe 失败 → 回退 account probe → 返回 account mode", async () => {
+  test("Team Token: project probe 失败 → bearer-direct probe 命中 → 返回 bearer-direct mode", async () => {
     setHandler((_url, init) => {
       const projectHeader = headerValue(init, "Project-Access-Token");
       const bearerHeader = headerValue(init, "Authorization");
-      if (projectHeader === "acct_xyz") {
-        // Railway 对 account token 用 Project-Access-Token 头会返 Not Authorized
-        return jsonRes({ errors: [{ message: "Not Authorized" }] });
+      const body = parseBody(init);
+      if (projectHeader === "team_xyz") {
+        return jsonRes({ errors: [{ message: "Project Token not found" }] });
       }
-      if (bearerHeader === "Bearer acct_xyz") {
-        return jsonRes({ data: { me: { id: "user-1" } } });
+      // bearer-direct probe: Bearer + estimatedUsage 直接试,返 array 视为命中
+      if (bearerHeader === "Bearer team_xyz" && body.query.includes("estimatedUsage")) {
+        return jsonRes({ data: { estimatedUsage: [] } });
       }
-      return jsonRes({ errors: [{ message: "unexpected request" }] }, 500);
+      return jsonRes({ errors: [{ message: "unexpected" }] }, 500);
     });
 
-    const mode = await detectRailwayAuthMode("acct_xyz");
-    expect(mode).toEqual({ mode: "account" });
-    // 试了 project probe + account probe,2 个请求
+    const mode = await detectRailwayAuthMode("team_xyz");
+    expect(mode).toEqual({ mode: "bearer-direct" });
     expect(calls).toHaveLength(2);
   });
 
-  test("两种 probe 都失败 → 抛错且消息包含双向路径提示", async () => {
+  test("PAT: project probe 失败 → bearer-direct 失败 → me 命中 → 抛 helpful error 引导用户换 Team Token", async () => {
+    setHandler((_url, init) => {
+      const bearerHeader = headerValue(init, "Authorization");
+      const body = parseBody(init);
+      if (headerValue(init, "Project-Access-Token")) {
+        return jsonRes({ errors: [{ message: "Project Token not found" }] });
+      }
+      // bearer-direct probe:PAT 调 estimatedUsage 无 workspace 上下文报错
+      if (bearerHeader === "Bearer pat_xxx" && body.query.includes("estimatedUsage")) {
+        return jsonRes({ errors: [{ message: "Workspace not found" }] });
+      }
+      // me probe 命中
+      if (bearerHeader === "Bearer pat_xxx" && body.query.includes("me ")) {
+        return jsonRes({ data: { me: { id: "u-1" } } });
+      }
+      return jsonRes({}, 500);
+    });
+
+    await expect(detectRailwayAuthMode("pat_xxx")).rejects.toThrow(/Personal Access Token/);
+    await expect(detectRailwayAuthMode("pat_xxx", { force: true })).rejects.toThrow(/Team Token/);
+  });
+
+  test("三种 probe 都失败 → 抛错且消息列出全部三条路径", async () => {
     setHandler(() => jsonRes({ errors: [{ message: "Not Authorized" }] }));
 
-    await expect(detectRailwayAuthMode("bad_token")).rejects.toThrow(/projectToken/);
+    await expect(detectRailwayAuthMode("bad_token")).rejects.toThrow(/all three auth probes/);
+    await expect(detectRailwayAuthMode("bad_token", { force: true })).rejects.toThrow(/projectToken/);
+    await expect(detectRailwayAuthMode("bad_token", { force: true })).rejects.toThrow(/estimatedUsage/);
     await expect(detectRailwayAuthMode("bad_token", { force: true })).rejects.toThrow(/me \{ id \}/);
   });
 
@@ -140,17 +164,19 @@ describe("detectRailwayAuthMode", () => {
 
   test("HTTP 5xx 时 probe 视为失败,回退继续试", async () => {
     setHandler((_url, init) => {
+      const body = parseBody(init);
       if (headerValue(init, "Project-Access-Token") === "tok") {
         return jsonRes({ error: "internal" }, 500);
       }
-      if (headerValue(init, "Authorization") === "Bearer tok") {
-        return jsonRes({ data: { me: { id: "u1" } } });
+      // bearer-direct probe 命中
+      if (headerValue(init, "Authorization") === "Bearer tok" && body.query.includes("estimatedUsage")) {
+        return jsonRes({ data: { estimatedUsage: [{ measurement: "CPU_USAGE" }] } });
       }
       return jsonRes({}, 500);
     });
 
     const mode = await detectRailwayAuthMode("tok");
-    expect(mode).toEqual({ mode: "account" });
+    expect(mode).toEqual({ mode: "bearer-direct" });
   });
 });
 
@@ -229,7 +255,7 @@ describe("fetchRailwayDaily", () => {
     expect(headerValue({ headers: usageCall!.headers }, "Authorization")).toBeUndefined();
   });
 
-  test("Account Token 路径: estimatedUsage 不带 projectId + Bearer 头", async () => {
+  test("Team Token (bearer-direct) 路径: estimatedUsage 不带 projectId + Bearer 头", async () => {
     const seenQueries: { headers: Record<string, string>; body: ReturnType<typeof parseBody> }[] = [];
     setHandler((_url, init) => {
       const body = parseBody(init);
@@ -237,13 +263,13 @@ describe("fetchRailwayDaily", () => {
 
       // Project probe 必败
       if (headerValue(init, "Project-Access-Token")) {
-        return jsonRes({ errors: [{ message: "Not Authorized" }] });
+        return jsonRes({ errors: [{ message: "Project Token not found" }] });
       }
-      // Account probe: me 命中
-      if (body.query.includes("me ")) {
-        return jsonRes({ data: { me: { id: "u-1" } } });
+      // bearer-direct probe: estimatedUsage(small) 命中
+      if (body.query.includes("estimatedUsage(measurements: [CPU_USAGE])")) {
+        return jsonRes({ data: { estimatedUsage: [{ measurement: "CPU_USAGE" }] } });
       }
-      // estimatedUsage: 不应带 projectId
+      // 正式 estimatedUsage: 不应带 projectId
       if (body.query.includes("estimatedUsage")) {
         expect(body.variables?.projectId).toBeUndefined();
         return jsonRes({
@@ -259,7 +285,7 @@ describe("fetchRailwayDaily", () => {
     });
 
     const mode = await detectRailwayAuthMode("acct_token");
-    expect(mode).toEqual({ mode: "account" });
+    expect(mode).toEqual({ mode: "bearer-direct" });
 
     // 模拟 estimatedUsage 调用走 Bearer
     await fetch(__internals.RAILWAY_GRAPHQL, {
@@ -364,5 +390,106 @@ describe("probeAccountToken (internal)", () => {
     setHandler(() => jsonRes({ data: { me: null } }));
     const result = await __internals.probeAccountToken("t");
     expect(result).toBe(false);
+  });
+});
+
+describe("probeBearerDirect (internal)", () => {
+  test("data.estimatedUsage 是 array → true", async () => {
+    setHandler(() =>
+      jsonRes({ data: { estimatedUsage: [{ measurement: "CPU_USAGE" }] } }),
+    );
+    const result = await __internals.probeBearerDirect("t");
+    expect(result).toBe(true);
+  });
+
+  test("空 array 也算成功(token 有权但没用量)", async () => {
+    setHandler(() => jsonRes({ data: { estimatedUsage: [] } }));
+    const result = await __internals.probeBearerDirect("t");
+    expect(result).toBe(true);
+  });
+
+  test("Workspace not found errors → false(PAT 的典型错)", async () => {
+    setHandler(() => jsonRes({ errors: [{ message: "Workspace not found" }] }));
+    const result = await __internals.probeBearerDirect("t");
+    expect(result).toBe(false);
+  });
+
+  test("network error → false (不抛)", async () => {
+    setHandler(() => {
+      throw new Error("ECONNRESET");
+    });
+    const result = await __internals.probeBearerDirect("t");
+    expect(result).toBe(false);
+  });
+});
+
+describe("fetchProjectNames (internal)", () => {
+  test("批量返多个 project name,按 projectId 索引", async () => {
+    setHandler((_url, init) => {
+      const body = parseBody(init);
+      // 验证 query 是 aliased project(id) 写法
+      expect(body.query).toContain("project(id:");
+      expect(headerValue(init, "Authorization")).toBe("Bearer t");
+      return jsonRes({
+        data: {
+          p_aaaaaaaabbbbccccddddeeeeeeeeeeee: { id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", name: "Mira" },
+          p_11111111222233334444555555555555: { id: "11111111-2222-3333-4444-555555555555", name: "Voice" },
+        },
+      });
+    });
+
+    const map = await __internals.fetchProjectNames(
+      "t",
+      ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "11111111-2222-3333-4444-555555555555"],
+      { mode: "bearer-direct" },
+    );
+    expect(map.size).toBe(2);
+    expect(map.get("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")).toBe("Mira");
+    expect(map.get("11111111-2222-3333-4444-555555555555")).toBe("Voice");
+  });
+
+  test("空 projectIds 数组 → 不发请求,返空 map", async () => {
+    setHandler(() => {
+      throw new Error("should not be called");
+    });
+    const map = await __internals.fetchProjectNames("t", [], { mode: "bearer-direct" });
+    expect(map.size).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("project mode 用 Project-Access-Token 头", async () => {
+    let seenHeaders: Record<string, string> | undefined;
+    setHandler((_url, init) => {
+      seenHeaders = init.headers as Record<string, string>;
+      return jsonRes({ data: {} });
+    });
+
+    await __internals.fetchProjectNames("ptok", ["aaaa-bbbb-cccc-dddd-eeee"], {
+      mode: "project",
+      projectId: "aaaa-bbbb-cccc-dddd-eeee",
+    });
+    expect(headerValue({ headers: seenHeaders! }, "Project-Access-Token")).toBe("ptok");
+    expect(headerValue({ headers: seenHeaders! }, "Authorization")).toBeUndefined();
+  });
+
+  test("HTTP 失败 → 返空 map(不阻塞主流程)", async () => {
+    setHandler(() => jsonRes({}, 500));
+    const map = await __internals.fetchProjectNames("t", ["aa-bb"], { mode: "bearer-direct" });
+    expect(map.size).toBe(0);
+  });
+
+  test("部分 project 返 null name → 只入命中的", async () => {
+    setHandler(() =>
+      jsonRes({
+        data: {
+          p_aaaa: { id: "aaaa", name: "A" },
+          p_bbbb: null,                    // 不存在
+          p_cccc: { id: "cccc", name: "" }, // 空字符串视为无名
+        },
+      }),
+    );
+    const map = await __internals.fetchProjectNames("t", ["aaaa", "bbbb", "cccc"], { mode: "bearer-direct" });
+    expect(map.size).toBe(1);
+    expect(map.get("aaaa")).toBe("A");
   });
 });

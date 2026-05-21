@@ -32,6 +32,7 @@ interface ExaRow {
 
 interface RailwayRow {
   monthly_estimate_usd: string;
+  projects: { project_id: string; name?: string | null; cost_usd: number }[] | null;
 }
 
 interface ApolloRow {
@@ -104,11 +105,23 @@ const readExa = async (beijingDate: string): Promise<ExaCost | null> => {
 
 const readRailway = async (beijingDate: string): Promise<RailwayCost | null> => {
   const { rows } = await getPool().query<RailwayRow>(
-    `SELECT monthly_estimate_usd FROM cost_railway_daily WHERE beijing_date = $1`,
+    `SELECT monthly_estimate_usd, projects FROM cost_railway_daily WHERE beijing_date = $1`,
     [beijingDate],
   );
   if (rows.length === 0) return null;
-  return { monthly_estimate_usd: num(rows[0].monthly_estimate_usd) };
+  const r = rows[0];
+  return {
+    monthly_estimate_usd: num(r.monthly_estimate_usd),
+    projects: (r.projects ?? [])
+      .map((p) => ({
+        project_id: p.project_id,
+        // 老数据没有 name 字段,容错回 null
+        name: p.name ?? null,
+        cost_usd: num(p.cost_usd),
+      }))
+      // 防御:DB 里如果没排序,这里强排一次
+      .sort((a, b) => b.cost_usd - a.cost_usd),
+  };
 };
 
 const readApollo = async (beijingDate: string): Promise<ApolloCost | null> => {
@@ -177,7 +190,7 @@ const empty = (): CostTabData => ({
     top_models: [],
   },
   exa: { total_cost_usd: 0, items: [] },
-  railway: { monthly_estimate_usd: 0 },
+  railway: { monthly_estimate_usd: 0, projects: [] },
   apollo: { estimated_cost_usd: 0, endpoints: [] },
   trend30d: [],
 });
