@@ -1,8 +1,9 @@
 // Railway GraphQL 鉴权探针 — 验证 token 类型 + Railway API 当前的鉴权要求
 //
 // 跑法:
-//   RAILWAY_TOKEN=xxx bun run test:railway
-//   (或) RAILWAY_BILLING_TOKEN=xxx bun run test:railway
+//   bun run test:railway
+//
+// 自动从项目根的 .env 读 RAILWAY_BILLING_TOKEN(Bun 原生支持),不用 export
 //
 // 探针对比 4 种 (header × query) 组合,确认 token 是 Project Token 还是 Account/Workspace Token:
 //

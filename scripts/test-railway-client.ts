@@ -1,7 +1,9 @@
 // Railway client 集成验证 — 用补丁后的 fetchRailwayDaily 真实打 Railway,检查 5 个 measurement 都拿到数值
 //
 // 跑法:
-//   RAILWAY_BILLING_TOKEN=xxx bun run test:railway-client
+//   bun run test:railway-client
+//
+// 自动从项目根的 .env 读 RAILWAY_BILLING_TOKEN(Bun 原生支持),不用 export
 //
 // 校验项:
 //   1. detectRailwayAuthMode 探到的 auth mode 合理(project 或 account)

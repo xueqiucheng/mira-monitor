@@ -18,7 +18,7 @@ bun run build:docs     # docs/architecture.md → docs/architecture.html
 ```
 
 - **Package manager**: `npm install --registry=https://registry.npmmirror.com --no-audit --no-fund`. `bunfig.toml` pins npmmirror because bun's resolver is unstable on the user's network.
-- **No test suite, no linter config**. The typecheck script is the merge gate; CI also runs `npm run build` before `railway up`.
+- **Tests**: `bun test` (via `npm test`) runs offline unit tests under `lib/**/__tests__/*.test.ts`. Currently covers Railway billing auth-mode probe + provider logic. Plus the typecheck script is the merge gate; CI also runs `npm run build` before `railway up`.
 - **Auth wall**: every request except `/api/health` is gated by Basic Auth in [middleware.ts](middleware.ts). If `DASHBOARD_BASIC_AUTH_PASS` is unset the middleware **rejects all requests by design** (fail-closed). Set it in `.env.local` before `bun dev` or browsing will 401.
 
 ## Architecture (the parts that aren't obvious from filenames)
