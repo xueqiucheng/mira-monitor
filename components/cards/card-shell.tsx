@@ -13,12 +13,21 @@ interface CardShellProps {
 export const CardShell = ({ title, source, className, children }: CardShellProps) => {
   const status = source?.status;
   const isMock = status?.message === "mock";
-  const variant: "secondary" | "outline" | "destructive" = isMock
+  const isUnconfigured = status?.configured === false;
+  const variant: "secondary" | "outline" | "destructive" = isMock || isUnconfigured
     ? "outline"
     : status?.ok
       ? "secondary"
       : "destructive";
-  const label = source ? (isMock ? `${source.name} · mock` : status?.ok ? source.name : `${source.name} · err`) : "";
+  const label = source
+    ? isMock
+      ? `${source.name} · mock`
+      : isUnconfigured
+        ? `${source.name} · 未配置`
+        : status?.ok
+          ? source.name
+          : `${source.name} · err`
+    : "";
   return (
     <Card className={cn("h-full overflow-hidden", className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
