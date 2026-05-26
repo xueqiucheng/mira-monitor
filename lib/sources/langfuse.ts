@@ -133,9 +133,11 @@ const fetchSpanSample = async (from: string, pages: number): Promise<SpanObserva
 export const fetchLlmMetrics = async (): Promise<LlmMetrics> => {
   const from24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const fromSpans = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+  // daily 是主数据(byModel/总成本),必须成功;spans 只用来算 Top tools,挂了降级为空数组
+  // Langfuse spans 接口数据多时容易超时,不能让它拖垮整个 Langfuse 卡片
   const [daily, spans] = await Promise.all([
     fetchLangfuse<DailyMetricsResponse>(`/api/public/metrics/daily?fromTimestamp=${encodeURIComponent(from24h)}`),
-    fetchSpanSample(fromSpans, 2),
+    fetchSpanSample(fromSpans, 2).catch(() => [] as SpanObservation[]),
   ]);
 
   const modelMap = new Map<string, ModelUsage>();
