@@ -11,7 +11,7 @@ interface CostTabProps {
 }
 
 export const CostTab = ({ data, sources }: CostTabProps) => {
-  const costSource = sources?.cost ?? { ok: false, configured: false, message: "mock" };
+  const costSource = sources?.cost ?? { ok: false, configured: false };
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       <AIGatewayCostCard data={data.ai_gateway} source={costSource} />

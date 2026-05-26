@@ -86,12 +86,12 @@ export interface SandboxMetrics {
 export interface HealthTabData {
   upstream: UpstreamStatus[];
   deploy: DeployStatus[];
-  ping: PingResult;
-  apiSla: ApiSlaMetrics;
-  webVitals: WebVitalsMetrics;
-  crashFree: CrashFreeMetrics;
+  ping: PingResult | null;
+  apiSla: ApiSlaMetrics | null;
+  webVitals: WebVitalsMetrics | null;
+  crashFree: CrashFreeMetrics | null;
   llmProviders: ProviderError[];
-  sandbox: SandboxMetrics;
+  sandbox: SandboxMetrics | null;
 }
 
 export interface GrowthMetrics {
@@ -142,11 +142,11 @@ export interface LlmMetrics {
 }
 
 export interface BusinessTabData {
-  growth: GrowthMetrics;
+  growth: GrowthMetrics | null;
   activationFunnel: FunnelStep[];
   retention: RetentionRow[];
-  usage: UsageMetrics;
-  llm: LlmMetrics;
+  usage: UsageMetrics | null;
+  llm: LlmMetrics | null;
 }
 
 export interface AIGatewayModelCost {
@@ -209,11 +209,11 @@ export interface CostTrendPoint {
 }
 
 export interface CostTabData {
-  date: string;
-  ai_gateway: AIGatewayCost;
-  exa: ExaCost;
-  railway: RailwayCost;
-  apollo: ApolloCost;
+  date: string | null;
+  ai_gateway: AIGatewayCost | null;
+  exa: ExaCost | null;
+  railway: RailwayCost | null;
+  apollo: ApolloCost | null;
   trend30d: CostTrendPoint[];
 }
 

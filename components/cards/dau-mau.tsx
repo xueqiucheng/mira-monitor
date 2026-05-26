@@ -3,7 +3,14 @@ import { CardShell } from "./card-shell";
 import { Spark } from "./spark";
 import { formatNumber } from "@/lib/format";
 
-export const DauMauCard = ({ data, source }: { data: GrowthMetrics; source: SourceStatus }) => {
+export const DauMauCard = ({ data, source }: { data: GrowthMetrics | null; source: SourceStatus }) => {
+  if (!data) {
+    return (
+      <CardShell title="DAU / MAU (30d)" source={{ name: "PostHog", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const dauToday = data.dau.at(-1)?.value ?? 0;
   return (
     <CardShell title="DAU / MAU (30d)" source={{ name: "PostHog", status: source }}>

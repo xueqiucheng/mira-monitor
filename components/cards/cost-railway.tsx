@@ -6,7 +6,14 @@ const TOP_N = 5;
 
 const shortId = (id: string): string => id.slice(0, 8);
 
-export const RailwayCostCard = ({ data, source }: { data: RailwayCost; source: SourceStatus }) => {
+export const RailwayCostCard = ({ data, source }: { data: RailwayCost | null; source: SourceStatus }) => {
+  if (!data) {
+    return (
+      <CardShell title="Railway (月预估)" source={{ name: "Ingest", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const topProjects = (data.projects ?? []).slice(0, TOP_N);
   const dayOfMonth = new Date().getUTCDate(); // 北京时差 ≤ 1 天,这里日均估算粒度无所谓
   const dailyAvg = data.monthly_estimate_usd / Math.max(dayOfMonth, 1);

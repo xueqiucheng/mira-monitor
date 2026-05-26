@@ -1,8 +1,14 @@
-import type { MetricsResponse, SourceName, SourceStatus } from "../types";
+import type {
+  BusinessTabData,
+  CostTabData,
+  HealthTabData,
+  MetricsResponse,
+  SourceName,
+  SourceStatus,
+} from "../types";
 import { isConfigured } from "../env";
 import { isPostgresConfigured } from "../db/postgres";
 import { fetchCostTab } from "../cost/read";
-import { mockResponse } from "./mock";
 import { fetchPing } from "./ping";
 import { fetchStatuspages } from "./statuspage";
 import { fetchRailwayDeployments } from "./railway";
@@ -19,9 +25,47 @@ const settled = <T>(p: Promise<T>): Promise<PromiseSettledResult<T>> =>
     }),
   );
 
+const emptyHealth = (): HealthTabData => ({
+  upstream: [],
+  deploy: [],
+  ping: null,
+  apiSla: null,
+  webVitals: null,
+  crashFree: null,
+  llmProviders: [],
+  sandbox: null,
+});
+
+const emptyBusiness = (): BusinessTabData => ({
+  growth: null,
+  activationFunnel: [],
+  retention: [],
+  usage: null,
+  llm: null,
+});
+
+const emptyCost = (): CostTabData => ({
+  date: null,
+  ai_gateway: null,
+  exa: null,
+  railway: null,
+  apollo: null,
+  trend30d: [],
+});
+
 export const fetchMetrics = async (): Promise<MetricsResponse> => {
-  const baseline = mockResponse();
-  const sources: Record<SourceName, SourceStatus> = baseline.sources;
+  const health = emptyHealth();
+  const business = emptyBusiness();
+  let cost = emptyCost();
+  const sources: Record<SourceName, SourceStatus> = {
+    posthog: { ok: false, configured: isConfigured("posthog") },
+    langfuse: { ok: false, configured: isConfigured("langfuse") },
+    sentry: { ok: false, configured: isConfigured("sentry") },
+    railway: { ok: false, configured: isConfigured("railway") },
+    statuspage: { ok: false, configured: true },
+    ping: { ok: false, configured: true },
+    cost: { ok: false, configured: isPostgresConfigured() },
+  };
 
   const [pingR, upstreamR, deployR, growthR, usageR, llmR, slaR, vitalsR, crashFreeR, costR] = await Promise.all([
     settled(fetchPing()),
@@ -39,7 +83,7 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
   ]);
 
   if (pingR.status === "fulfilled") {
-    baseline.health.ping = pingR.value;
+    health.ping = pingR.value;
     sources.ping = { ok: true, configured: true };
   } else {
     sources.ping = {
@@ -50,7 +94,7 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
   }
 
   if (upstreamR.status === "fulfilled") {
-    baseline.health.upstream = upstreamR.value;
+    health.upstream = upstreamR.value;
     sources.statuspage = { ok: true, configured: true };
   } else {
     sources.statuspage = {
@@ -61,7 +105,7 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
   }
 
   if (deployR && deployR.status === "fulfilled" && deployR.value.length > 0) {
-    baseline.health.deploy = deployR.value;
+    health.deploy = deployR.value;
     sources.railway = { ok: true, configured: true };
   } else if (deployR) {
     sources.railway = {
@@ -75,10 +119,10 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
   }
 
   if (growthR && growthR.status === "fulfilled") {
-    baseline.business.growth = growthR.value;
+    business.growth = growthR.value;
   }
   if (usageR && usageR.status === "fulfilled") {
-    baseline.business.usage = usageR.value;
+    business.usage = usageR.value;
   }
   if (growthR || usageR) {
     const growthOk = growthR?.status === "fulfilled";
@@ -92,7 +136,7 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
 
   if (llmR) {
     if (llmR.status === "fulfilled") {
-      baseline.business.llm = llmR.value;
+      business.llm = llmR.value;
       sources.langfuse = { ok: true, configured: true };
     } else {
       sources.langfuse = { ok: false, configured: true, message: String(llmR.reason) };
@@ -100,9 +144,9 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
   }
 
   if (slaR || vitalsR || crashFreeR) {
-    if (slaR?.status === "fulfilled") baseline.health.apiSla = slaR.value;
-    if (vitalsR?.status === "fulfilled") baseline.health.webVitals = vitalsR.value;
-    if (crashFreeR?.status === "fulfilled") baseline.health.crashFree = crashFreeR.value;
+    if (slaR?.status === "fulfilled") health.apiSla = slaR.value;
+    if (vitalsR?.status === "fulfilled") health.webVitals = vitalsR.value;
+    if (crashFreeR?.status === "fulfilled") health.crashFree = crashFreeR.value;
     const allOk = [slaR, vitalsR, crashFreeR].every((r) => r?.status === "fulfilled");
     const firstErr = [slaR, vitalsR, crashFreeR].find((r) => r?.status === "rejected");
     sources.sentry = {
@@ -114,12 +158,18 @@ export const fetchMetrics = async (): Promise<MetricsResponse> => {
 
   if (costR) {
     if (costR.status === "fulfilled") {
-      baseline.cost = costR.value;
+      cost = costR.value;
       sources.cost = { ok: true, configured: true };
     } else {
       sources.cost = { ok: false, configured: true, message: String(costR.reason) };
     }
   }
 
-  return baseline;
+  return {
+    generatedAt: new Date().toISOString(),
+    health,
+    business,
+    cost,
+    sources,
+  };
 };

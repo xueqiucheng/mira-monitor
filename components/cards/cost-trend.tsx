@@ -42,6 +42,13 @@ export const CostTrendCard = ({
     (s, d) => s + d.ai_gateway + d.exa + d.railway + d.apollo,
     0,
   );
+  if (data.trend30d.length === 0) {
+    return (
+      <CardShell title="30 天总成本趋势" source={{ name: "Ingest", status: source }} className={className}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   return (
     <CardShell title="30 天总成本趋势" source={{ name: "Ingest", status: source }} className={cn("overflow-visible", className)}>
       <div className="mb-2 flex items-baseline justify-between">

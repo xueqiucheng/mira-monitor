@@ -2,7 +2,14 @@ import type { LlmMetrics, SourceStatus } from "@/lib/types";
 import { CardShell } from "./card-shell";
 import { formatNumber } from "@/lib/format";
 
-export const ToolCallDistributionCard = ({ data, source }: { data: LlmMetrics; source: SourceStatus }) => {
+export const ToolCallDistributionCard = ({ data, source }: { data: LlmMetrics | null; source: SourceStatus }) => {
+  if (!data || data.topTools.length === 0) {
+    return (
+      <CardShell title="工具调用 Top 8 (24h)" source={{ name: "Langfuse", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const sorted = [...data.topTools].sort((a, b) => b.count - a.count).slice(0, 8);
   const max = Math.max(...sorted.map((t) => t.count), 1);
   return (

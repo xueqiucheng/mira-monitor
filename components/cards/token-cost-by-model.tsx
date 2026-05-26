@@ -4,7 +4,14 @@ import { formatCostUsd, formatNumber } from "@/lib/format";
 
 const COLORS = ["hsl(217 91% 60%)", "hsl(280 70% 60%)", "hsl(142 76% 50%)", "hsl(40 96% 60%)", "hsl(0 84% 60%)"];
 
-export const TokenCostByModelCard = ({ data, source }: { data: LlmMetrics; source: SourceStatus }) => {
+export const TokenCostByModelCard = ({ data, source }: { data: LlmMetrics | null; source: SourceStatus }) => {
+  if (!data) {
+    return (
+      <CardShell title="Token & 成本 by Model (24h)" source={{ name: "Langfuse", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const max = Math.max(...data.byModel.map((m) => m.totalCost), 1);
   return (
     <CardShell title="Token & 成本 by Model (24h)" source={{ name: "Langfuse", status: source }}>
