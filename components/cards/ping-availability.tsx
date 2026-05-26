@@ -3,7 +3,14 @@ import { CardShell } from "./card-shell";
 import { formatMs } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export const PingAvailabilityCard = ({ data, source }: { data: PingResult; source: SourceStatus }) => {
+export const PingAvailabilityCard = ({ data, source }: { data: PingResult | null; source: SourceStatus }) => {
+  if (!data) {
+    return (
+      <CardShell title="健康检查" source={{ name: "ping", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const up = data.status === "up";
   return (
     <CardShell title="健康检查" source={{ name: "ping", status: source }}>

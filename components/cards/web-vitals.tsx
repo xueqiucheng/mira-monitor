@@ -30,7 +30,14 @@ const formatValue = (key: string, value: number | null): string => {
   return `${Math.round(value)}ms`;
 };
 
-export const WebVitalsCard = ({ data, source }: { data: WebVitalsMetrics; source: SourceStatus }) => {
+export const WebVitalsCard = ({ data, source }: { data: WebVitalsMetrics | null; source: SourceStatus }) => {
+  if (!data) {
+    return (
+      <CardShell title="Web Vitals P75 (24h)" source={{ name: "Sentry", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const rows = [
     { key: "LCP", value: data.lcpP75 },
     { key: "INP", value: data.inpP75 },

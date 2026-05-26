@@ -2,7 +2,14 @@ import type { ExaCost, SourceStatus } from "@/lib/types";
 import { CardShell } from "./card-shell";
 import { formatCostUsd, formatNumber } from "@/lib/format";
 
-export const ExaCostCard = ({ data, source }: { data: ExaCost; source: SourceStatus }) => {
+export const ExaCostCard = ({ data, source }: { data: ExaCost | null; source: SourceStatus }) => {
+  if (!data) {
+    return (
+      <CardShell title="Exa (今日)" source={{ name: "Ingest", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const max = Math.max(...data.items.map((i) => i.cost_usd), 0.01);
   return (
     <CardShell title="Exa (今日)" source={{ name: "Ingest", status: source }}>

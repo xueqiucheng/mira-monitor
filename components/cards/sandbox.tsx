@@ -3,7 +3,14 @@ import { CardShell } from "./card-shell";
 import { cn } from "@/lib/utils";
 import { formatNumber, formatPercent } from "@/lib/format";
 
-export const SandboxCard = ({ data, source }: { data: SandboxMetrics; source: SourceStatus }) => {
+export const SandboxCard = ({ data, source }: { data: SandboxMetrics | null; source: SourceStatus }) => {
+  if (!data) {
+    return (
+      <CardShell title="沙箱执行 (24h)" source={{ name: "Sentry", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const rateColor =
     data.errorRate < 0.01 ? "text-emerald-400" : data.errorRate < 0.05 ? "text-amber-400" : "text-red-400";
   return (

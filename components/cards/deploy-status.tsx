@@ -15,7 +15,7 @@ const STATUS_PILL: Record<DeployStatus["status"], string> = {
 export const DeployStatusCard = ({ data, source }: { data: DeployStatus[]; source: SourceStatus }) => (
   <CardShell title="部署状态" source={{ name: "Railway", status: source }}>
     {data.length === 0 ? (
-      <p className="text-sm text-muted-foreground">no deployments</p>
+      <p className="text-sm text-muted-foreground">—</p>
     ) : (
       <ul className="space-y-3">
         {data.map((d) => (

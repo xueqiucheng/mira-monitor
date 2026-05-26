@@ -3,6 +3,13 @@ import { CardShell } from "./card-shell";
 import { formatNumber, formatPercent } from "@/lib/format";
 
 export const ActivationFunnelCard = ({ data, source }: { data: FunnelStep[]; source: SourceStatus }) => {
+  if (data.length === 0) {
+    return (
+      <CardShell title="激活漏斗" source={{ name: "PostHog", status: source }}>
+        <p className="text-sm text-muted-foreground">—</p>
+      </CardShell>
+    );
+  }
   const top = data[0]?.count ?? 0;
   return (
     <CardShell title="激活漏斗" source={{ name: "PostHog", status: source }}>

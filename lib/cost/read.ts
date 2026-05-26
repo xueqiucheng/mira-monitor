@@ -180,29 +180,12 @@ const readTrend30d = async (): Promise<CostTrendPoint[]> => {
   }));
 };
 
-const empty = (): CostTabData => ({
-  date: getBeijingDayWindow().beijingDate,
-  ai_gateway: {
-    total_cost_usd: 0,
-    balance_usd: 0,
-    request_count: 0,
-    tokens: { input: 0, output: 0, cache_read: 0, cache_write: 0 },
-    top_models: [],
-  },
-  exa: { total_cost_usd: 0, items: [] },
-  railway: { monthly_estimate_usd: 0, projects: [] },
-  apollo: { estimated_cost_usd: 0, endpoints: [] },
-  trend30d: [],
-});
-
 export const fetchCostTab = async (): Promise<CostTabData> => {
   // 幂等迁移:首次 ingest 还没跑的话,Cost Tab 读 4 张表会报 "relation does not exist"。
   // runMigrations() 自带 module-level flag,每个 Node 进程只跑一次;
   // pg_advisory_lock 防 web/cron 同时跑互相打架。
   await runMigrations();
   const today = getBeijingDayWindow().beijingDate;
-  const baseline = empty();
-  baseline.date = today;
 
   const [ag, ex, rw, ap, trend] = await Promise.all([
     readAiGateway(today),
@@ -212,10 +195,12 @@ export const fetchCostTab = async (): Promise<CostTabData> => {
     readTrend30d(),
   ]);
 
-  if (ag) baseline.ai_gateway = ag;
-  if (ex) baseline.exa = ex;
-  if (rw) baseline.railway = rw;
-  if (ap) baseline.apollo = ap;
-  baseline.trend30d = trend;
-  return baseline;
+  return {
+    date: today,
+    ai_gateway: ag,
+    exa: ex,
+    railway: rw,
+    apollo: ap,
+    trend30d: trend,
+  };
 };
